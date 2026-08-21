@@ -81,8 +81,12 @@ user decision:
 
 ## Current status
 
-As of this writing, the repository contains **specification only**: this
-file, `README.md`, and `docs/`. No application code, no UI, no build
-tooling, and no `package.json` exist yet. `docs/ROADMAP.md` defines Phase 0
-as the current phase — do not jump ahead to feature implementation without
-the user explicitly moving the project into a later phase.
+`docs/ROADMAP.md` defines Phase 0 as the current phase, now **in
+progress**. What exists so far: the state store, event bus, schema/
+migration registry, and storage adapter (`src/core/`), each with unit
+tests (`tests/unit/`, run via `npm test`). Still to build for Phase 0: the
+id generator, date utilities, the minimal UI shell, and the build script
+that inlines everything into `dist/index.html` — see `docs/ROADMAP.md` for
+the full exit criteria. No feature module (Tasks, Calendar, Money, etc.)
+exists yet — do not jump ahead to those without the user explicitly moving
+the project into a later phase.

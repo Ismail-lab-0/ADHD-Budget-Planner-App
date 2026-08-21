@@ -10,9 +10,11 @@ effort that normally goes into *running* a planning system.
 
 ## Status
 
-**Specification phase.** This repository currently contains product and
-technical documentation only — no application code yet. See
-`docs/ROADMAP.md` for what's planned and in what order.
+**Phase 0 (foundation) in progress.** The core state layer — state store,
+event bus, storage adapter, schema/migrations — exists under `src/core/`
+with unit tests. No UI, no feature modules (Tasks, Calendar, Money, etc.),
+and no build yet. See `docs/ROADMAP.md` for what's planned and in what
+order.
 
 ## Why this exists
 
@@ -52,9 +54,17 @@ See `docs/PRODUCT.md` for the full product vision and principles.
 
 ## Getting started
 
-There is no build yet — application code hasn't been written. Once
-scaffolding lands (see `docs/ROADMAP.md`, Phase 0), this section will be
-updated with real run/build/test instructions.
+There's no app to run yet (no UI, no build) — only the core state layer
+under `src/core/`. To run its unit tests:
+
+```
+npm test
+```
+
+This runs Node's built-in test runner (`node --test`) against
+`tests/unit/` — no dependencies to install. This section will be updated
+with real run/build instructions once the UI shell and build script land
+(see `docs/ROADMAP.md`, Phase 0).
 
 ## Contributing / AI-assisted development
 

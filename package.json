@@ -1,0 +1,10 @@
+{
+  "name": "adhd-life-planner",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "A low-friction personal life-management app. See docs/ for the full specification.",
+  "scripts": {
+    "test": "node --test tests/unit/*.test.js"
+  }
+}

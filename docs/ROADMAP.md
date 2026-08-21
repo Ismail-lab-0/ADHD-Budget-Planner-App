@@ -4,8 +4,10 @@ This roadmap sequences the work. Phases are meant to be done in order —
 later phases assume earlier ones exist. Per `CLAUDE.md`, do not start a
 module ahead of its phase without the user explicitly asking for it.
 
-**Current phase: Phase 0, not yet started (specification only).** This
-repository currently contains only `CLAUDE.md`, `README.md`, and `docs/`.
+**Current phase: Phase 0, in progress.** The core state layer is built:
+state store, event bus, schema/migration registry, and storage adapter
+(`src/core/`), each with unit tests (`tests/unit/`). Not yet built: id
+generator, date utilities, the UI shell, and the single-file build script.
 
 ## Phase 0 — Foundation (scaffolding, no features)
 
@@ -13,21 +15,27 @@ Goal: a minimal, boring, well-tested core that every future module builds
 on. No task list, no calendar, no UI screens beyond an empty shell.
 
 - Project scaffolding: `/src` directory layout as described in
-  `docs/ARCHITECTURE.md`, dev `index.html` + `main.js` entry point.
+  `docs/ARCHITECTURE.md`, dev `index.html` + `main.js` entry point. ⏳ not
+  yet started (core modules exist under `src/core/`; no entry point yet).
 - Core services: state store (`get`/`dispatch`/`subscribe`), event bus,
-  date utilities, id generator.
+  date utilities, id generator. ✅ store and event bus done
+  (`src/core/store.js`, `src/core/events.js`); ⏳ date utilities and id
+  generator not yet built.
 - Storage adapter: load/save against `localStorage`, schema version field,
   migration runner (with zero migrations needed yet, but the mechanism in
-  place), corrupted-data recovery path.
+  place), corrupted-data recovery path. ✅ done (`src/core/storage.js`,
+  `src/core/schema.js`).
 - Minimal UI shell: navigation between placeholder screens, nothing
-  module-specific yet.
+  module-specific yet. ⏳ not yet started.
 - Build script that inlines `/src` and `/styles` into a single
   `dist/index.html`, proven against the empty shell (so the "must be
   buildable to one file" constraint is validated early, not discovered
-  late).
+  late). ⏳ not yet started.
 - Unit test setup using `node:test`, with tests for the store, event bus,
   date utils, id generator, and storage adapter (including the
-  corrupted-data and migration-runner paths).
+  corrupted-data and migration-runner paths). ✅ test setup and store/
+  event-bus/storage/schema coverage done (`npm test`); ⏳ date-utils and
+  id-generator tests pending those modules.
 
 Exit criteria: an empty app that opens, persists an empty state, survives
 a reload, and builds to a working single HTML file — before any feature
