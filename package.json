@@ -5,6 +5,8 @@
   "type": "module",
   "description": "A low-friction personal life-management app. See docs/ for the full specification.",
   "scripts": {
-    "test": "node --test tests/unit/*.test.js"
+    "test": "node --test tests/unit/*.test.js",
+    "start": "node build/serve.js",
+    "build": "node build/build.js"
   }
 }

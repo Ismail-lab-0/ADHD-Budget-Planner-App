@@ -1,8 +1,13 @@
 # Architecture
 
-This document defines the technical architecture for ADHD Life Planner. It
-is binding: implementation should follow it, and any deviation should
-update this document in the same change (see `CLAUDE.md`).
+This document defines the technical architecture for ADHD Budget Planner
+(formerly a broader "ADHD Life Planner" — see `docs/PRODUCT.md` §9 for what
+the product pivot means for existing code). It is binding: implementation
+should follow it, and any deviation should update this document in the
+same change (see `CLAUDE.md`). The constraints, technology choices, state
+architecture, and storage strategy below are unchanged by the product
+pivot — only the feature module list (§6) and its worked examples (§7)
+change.
 
 ## 1. Constraints that shape everything
 
@@ -57,11 +62,12 @@ into one file for distribution.
 └───────────────┬─────────────────────────────────┬────────────┘
                 │                                 │
      ┌──────────▼──────────┐            ┌─────────▼──────────┐
-     │   Feature Modules    │            │   Today Engine      │
-     │ tasks / calendar /   │◄──────────►│ (aggregates feature │
-     │ routines / money /   │  read via  │  module outputs into │
-     │ goals / review /     │  selectors │  the Today view)     │
-     │ onboarding / backup  │            └─────────┬───────────┘
+     │   Feature Modules    │            │  Dashboard Engine   │
+     │ accounts / income /  │◄──────────►│ (aggregates feature │
+     │ bills / expenses /   │  read via  │  module outputs into │
+     │ savings / safe-to-   │  selectors │  the Safe-to-Spend   │
+     │ spend / onboarding / │            │  dashboard view)     │
+     │ backup                │            └─────────┬───────────┘
      └──────────┬───────────┘                      │
                 │  dispatch actions / read state     │
      ┌──────────▼─────────────────────────────────────▼───────┐
@@ -88,21 +94,21 @@ storage adapter.
   owned by the state store. No feature module keeps its own parallel copy
   of persisted data.
 - **Unidirectional flow:** UI triggers an *action* (a plain description of
-  intent, e.g. `{ type: 'task/complete', id }`) → the store applies a pure
-  update function to produce new state → the store persists the relevant
-  slice via the storage adapter → the store publishes a change
+  intent, e.g. `{ type: 'expenses/create', expense }`) → the store applies
+  a pure update function to produce new state → the store persists the
+  relevant slice via the storage adapter → the store publishes a change
   notification → subscribed UI re-renders from the new state.
 - **Event bus:** a minimal pub/sub (`on(event, handler)`, `emit(event,
   payload)`, `off(...)`) used for state-change notifications and for
-  cross-module signals that aren't full state (e.g. "a routine instance
-  finished," which Today may want to react to without owning routine
+  cross-module signals that aren't full state (e.g. "an expense was just
+  logged," which the Dashboard may want to react to without owning expense
   state). No framework needed — this is ~30 lines of code.
-- **Derived state is computed, not stored.** Safe-to-Spend, "what should I
-  do next," and Today's aggregated view are all *derived* from stored
-  entities at read time (memoized if it becomes a real performance need).
-  They are never separately persisted, which avoids them going stale or
-  out of sync with their source data. See `docs/DATA-MODEL.md` §"Derived
-  vs. stored data."
+- **Derived state is computed, not stored.** Safe-to-Spend, the daily/
+  weekly spending allowance, and the Dashboard's aggregated view are all
+  *derived* from stored entities at read time (memoized if it becomes a
+  real performance need). They are never separately persisted, which
+  avoids them going stale or out of sync with their source data. See
+  `docs/DATA-MODEL.md` §"Derived vs. stored data."
 - **No global mutable singletons reached via import.** Modules receive the
   store/bus/adapter they need through explicit initialization (simple
   dependency passing), not by importing a shared mutable global from
@@ -139,50 +145,64 @@ storage adapter.
   cache API) unless a specific, documented need arises later — keeping to
   one mechanism keeps the storage adapter's contract simple.
 
-## 6. Directory layout (planned)
+## 6. Directory layout
 
-Not created until Phase 0 scaffolding begins (see `docs/ROADMAP.md`).
-Documented here so structure is agreed on before code exists.
+The Tasks/Next-Action/Today-for-tasks modules from the retired product
+direction (`docs/PRODUCT.md` §9) have been removed as of Phase 2 — this
+reflects what's actually in the repo, not a future target.
 
 ```
 /src
   /core
-    store.js         # state store: get/dispatch/subscribe
-    events.js        # minimal pub/sub event bus
-    storage.js        # the storage adapter (only module touching localStorage)
-    schema.js         # schema version + migrations
-    id.js              # id generation helper
-    date.js            # date/time utilities (single source of "today", timezone handling)
+    store.js               # state store: get/dispatch/subscribe
+    events.js               # minimal pub/sub event bus
+    storage.js                # the storage adapter (only module touching localStorage)
+    schema.js                  # schema version + migrations
+    id.js                        # id generation helper
+    date.js                        # date/time utilities (single source of "today", timezone handling)
+    money.js                         # integer-cents money parsing/formatting (see docs/DATA-MODEL.md §2)
+    list-entity.js                     # generic create/update/delete/toggle reducer factory for id-keyed lists
   /modules
-    today/
-    tasks/
-    next-action/
-    calendar/
-    routines/
-    money/
-    safe-to-spend/
-    goals/
-    weekly-review/
-    onboarding/
-    backup/
+    budget/          # Current Balance, Savings allocation (single-value figures; Safety Buffer removed, see docs/SAFE-TO-SPEND.md)
+    incomes/          # Income + Paydays; also owns the Current Balance cross-slice effect for confirmed-received income (balance-effect.js — see docs/DATA-MODEL.md §3a), mirroring expenses/'s pattern below
+    bills/              # Upcoming Bills; also owns the Current Balance cross-slice effect for a bill marked paid/unpaid (balance-effect.js — see docs/DATA-MODEL.md §3a), same pattern as incomes/ and expenses/ below
+    planned-expenses/     # Planned Expenses
+    expenses/               # logged spending; also owns the Current Balance cross-slice effect (balance-effect.js — see docs/DATA-MODEL.md §3a)
+    category-budgets/        # optional monthly spending limits — read-only w.r.t. safe-to-spend/, see docs/SAFE-TO-SPEND.md §3b
+    income-receipts/            # automatic historical log of confirmed income (docs/DATA-MODEL.md "IncomeReceipt") — no CRUD of its own, created by incomes/'s "Mark received" via src/main.js's rootReducer, read by dashboard/'s getPeriodSummary
+    bill-payments/               # the Bill-side counterpart to income-receipts/ (docs/DATA-MODEL.md "BillPayment") — created/un-created by bills/'s "Mark paid"/"Mark unpaid" via src/main.js's rootReducer, read by dashboard/'s getPeriodSummary
+    safe-to-spend/              # getSafeToSpend/getSpendingAllowance — pure calc, see docs/SAFE-TO-SPEND.md; consumed by the dashboard
+    dashboard/                    # getUpcomingCommitments/getUpcomingBills/getUpcomingIncome/getPeriodSummary — composition/selection only, no money arithmetic of its own (getPeriodSummary composes other modules' selectors for the header bar's global period selector — see CLAUDE.md "Current status")
+    settings/                       # onboardingCompletedAt (completeOnboardingAction/hasCompletedOnboarding) and theme (setThemeAction/getTheme — see src/ui/components/theme-toggle.js)
+    # not yet built: backup/ — see docs/ROADMAP.md
   /ui
-    shell.js          # navigation + screen mounting
-    components/        # small shared render helpers (not a component framework)
+    shell.js          # mounts the single Dashboard screen; gates on hasCompletedOnboarding; toggles a `.theme-dark`/`.theme-light` class on <html> from the stored theme preference on every render (docs/DATA-MODEL.md "Settings"). No nav/routing beyond the dashboard's own header bar (src/ui/components/header-bar.js — a brand mark + the global period selector + theme toggle, deliberately not a multi-module nav) — see CLAUDE.md's "Current status" for the running account of what's been added/removed and why
+    dom.js             # tiny createElement/appendChild helper (`el()`)
+    components/        # small shared render helpers (not a component framework); more-options.js is the shared "+ More options" progressive-disclosure wrapper; icons.js is the inline SVG icon set (icon/iconChip/sectionHeading/categoryIconChip/categoryEmojiBadge) — no CDN, hand-authored, see CLAUDE.md's no-network-request rule; popup.js is the shared centered modal, period-selector.js a lighter anchored-dropdown variant of the same open/close pattern
+    screens/            # dashboard.js (the only screen — a 2-column grid at desktop width, src/styles/responsive.css `.dashboard-grid`) and onboarding.js
   /styles
     base.css
-    <module>.css
+    components.css
+    responsive.css
   main.js              # dev entry point, wires core + modules + shell
 index.html             # dev entry HTML (loads main.js as an ES module)
 /build
   build.js             # inlines src/* into one dist/index.html
+  serve.js             # zero-dependency local static server for dev
 /dist
-  index.html           # generated, self-contained distributable (not committed until it exists for real)
+  index.html           # generated, self-contained distributable
 /tests
   unit/                # node:test files, one per logic module
 docs/
 CLAUDE.md
 README.md
 ```
+
+`src/core/list-entity.js` is a small factory (`createListReducer`) that
+builds the common create/update/delete/toggle reducer shape shared by
+Incomes/Bills/Planned Expenses, so that boilerplate isn't triplicated —
+each module still owns its own validation (`validateNew`/
+`sanitizeChanges`), only the array-manipulation mechanics are shared.
 
 Each `/modules/<name>/` directory is expected to contain the module's
 state slice/reducer, its derived-data/selector functions, and its UI
@@ -193,23 +213,47 @@ rendering, but *not* other modules' internals.
 - A feature module may depend on: `/core` (store, events, storage, id,
   date utils) and generic `/ui` helpers.
 - A feature module may **not** import another feature module's internal
-  files directly. If Today needs data derived from Tasks, it calls a
-  selector function that the Tasks module exports as its public interface
-  (e.g. `tasks/index.js` exporting `getTasksDueToday(state)`), not reach
-  into `tasks/store.js`.
-- Cross-module reactions (e.g. "completing a routine step should be
-  reflected on Today immediately") go through the event bus or through
-  Today re-deriving from state on the next state-change notification —
+  files directly. If the Dashboard needs data derived from Bills, it calls
+  a selector function that the Bills module exports as its public
+  interface (e.g. `bills/index.js` exporting `getBillsDueBefore(state,
+  date)`), not reach into `bills/store.js`.
+- Cross-module reactions (e.g. "logging an expense should be reflected on
+  the Dashboard immediately") go through the event bus or through the
+  Dashboard re-deriving from state on the next state-change notification —
   never through a module directly calling into another module's update
   functions.
-- The **Today module is the only module allowed to depend on many other
-  modules' public selectors at once** (that's its job — composition). All
-  other modules should be able to function with only `/core` as a
-  dependency, so they stay independently understandable and testable.
-- The **Safe-to-Spend and "What should I do next" engines** are themselves
+- The **Dashboard module is the only module allowed to depend on many
+  other modules' public selectors at once** (that's its job —
+  composition). All other modules should be able to function with only
+  `/core` as a dependency, so they stay independently understandable and
+  testable.
+- The **Safe-to-Spend and Daily/Weekly Allowance engines** are themselves
   treated as modules with a narrow public interface (`getSafeToSpend(state)`,
-  `getNextAction(state)`), not folded directly into Money/Tasks, so their
-  logic can be unit-tested and reasoned about in isolation.
+  `getSpendingAllowance(state)`), not folded directly into Accounts/Bills,
+  so their logic can be unit-tested and reasoned about in isolation — see
+  `docs/PRODUCT.md` §6 on why the exact formula needs to be nailed down
+  before this module is written.
+- **One narrow, documented exception (now used three times, two of them
+  three-way):** a genuinely atomic cross-slice state transition — Expenses
+  affecting `budget.currentBalanceCents` (two slices); confirming an
+  Income received touching `incomes`, `budget.currentBalanceCents`,
+  **and** `incomeReceipts` (docs/DATA-MODEL.md "IncomeReceipt"); and
+  marking a Bill paid/unpaid touching `bills`, `budget.currentBalanceCents`,
+  **and** `billPayments` the same way (docs/DATA-MODEL.md "BillPayment")
+  — is *not* routed through the event bus, because the affected slices
+  must update together in one state transition, not several separate
+  dispatches that could leave them briefly inconsistent. The owning
+  module(s) (`src/modules/expenses/balance-effect.js`; `src/modules/
+  incomes/balance-effect.js` + `src/modules/income-receipts/
+  create-receipt.js`; `src/modules/bills/balance-effect.js` + `src/
+  modules/bill-payments/create-payment.js`) stay self-contained (each a
+  pure function computing *what changed*, with no knowledge of the other
+  slices' internals); only `src/main.js`'s
+  `rootReducer` — the one place with full-state visibility — applies the
+  effect(s) across every slice a given action touches. Reach for this
+  pattern only when slices genuinely must change atomically; anything
+  that can tolerate a render in between should
+  still use the event bus or re-derivation.
 
 ## 8. Offline & resilience
 

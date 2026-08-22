@@ -24,7 +24,7 @@ describe('createStorageAdapter', () => {
     const adapter = createStorageAdapter({ storage });
     const state = adapter.load();
     assert.equal(state.schemaVersion, CURRENT_SCHEMA_VERSION);
-    assert.deepEqual(state.tasks, []);
+    assert.deepEqual(state.incomes, []);
   });
 
   test('save() then load() round-trips the exact state', () => {
@@ -46,7 +46,7 @@ describe('createStorageAdapter', () => {
     const state = adapter.load();
 
     assert.equal(state.schemaVersion, CURRENT_SCHEMA_VERSION);
-    assert.deepEqual(state.tasks, []);
+    assert.deepEqual(state.incomes, []);
     assert.equal(corruptPayload, '{ this is not valid json');
   });
 
@@ -98,25 +98,25 @@ describe('createStorageAdapter', () => {
     };
     const adapter = createStorageAdapter({ storage, debounceMs: 300 });
 
-    adapter.scheduleSave({ ...createEmptyState(), tasks: [{ id: '1' }] });
+    adapter.scheduleSave({ ...createEmptyState(), incomes: [{ id: '1' }] });
     t.mock.timers.tick(100);
-    adapter.scheduleSave({ ...createEmptyState(), tasks: [{ id: '1' }, { id: '2' }] });
+    adapter.scheduleSave({ ...createEmptyState(), incomes: [{ id: '1' }, { id: '2' }] });
     t.mock.timers.tick(100);
-    adapter.scheduleSave({ ...createEmptyState(), tasks: [{ id: '1' }, { id: '2' }, { id: '3' }] });
+    adapter.scheduleSave({ ...createEmptyState(), incomes: [{ id: '1' }, { id: '2' }, { id: '3' }] });
     t.mock.timers.tick(300);
 
     assert.equal(writeCount, 1);
-    assert.equal(adapter.load().tasks.length, 3);
+    assert.equal(adapter.load().incomes.length, 3);
   });
 
   test('flush() writes an in-flight scheduled save immediately (e.g. on page hide/unload)', () => {
     const storage = createMockStorage();
     const adapter = createStorageAdapter({ storage, debounceMs: 10_000 });
 
-    adapter.scheduleSave({ ...createEmptyState(), tasks: [{ id: '1' }] });
+    adapter.scheduleSave({ ...createEmptyState(), incomes: [{ id: '1' }] });
     adapter.flush();
 
-    assert.equal(adapter.load().tasks.length, 1);
+    assert.equal(adapter.load().incomes.length, 1);
   });
 
   test('flush() with nothing pending is a safe no-op', () => {

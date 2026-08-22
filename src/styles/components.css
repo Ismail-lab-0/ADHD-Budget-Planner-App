@@ -1,0 +1,1009 @@
+/* Reusable component styles. See CLAUDE.md "Design system": typography,
+   spacing, radius, buttons, cards, inputs, navigation, modal structure,
+   empty states, status indicators. Base (non-breakpoint-specific) look
+   only — layout changes by screen size live in responsive.css. */
+
+/* ---- App shell ---- */
+
+.app-banner {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-accent-muted);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.app-main {
+  padding: var(--space-4);
+}
+
+/* ---- Cards ---- */
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+  box-shadow: var(--shadow-sm);
+}
+
+.card:last-child {
+  margin-bottom: 0;
+}
+
+/* ---- Icons (src/ui/components/icons.js) ---- */
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  flex-shrink: 0;
+}
+
+/* A small tinted rounded chip behind an icon — the chip's background is
+   a soft tint of `--chip-color` via color-mix, so every new use just sets
+   one color instead of a whole bg/fg pair. */
+.icon-chip {
+  --chip-color: var(--color-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  background: var(--color-accent-muted); /* fallback for browsers without color-mix() */
+  background: color-mix(in srgb, var(--chip-color) 16%, transparent);
+  color: var(--chip-color);
+  flex-shrink: 0;
+}
+
+.icon-chip--sm {
+  width: 30px;
+  height: 30px;
+}
+
+/* A bigger, friendlier rounded-square badge showing a real emoji — same
+   tint approach as .icon-chip, just larger and with emoji sized to match
+   (see categoryEmojiBadge, src/ui/components/icons.js). */
+.emoji-badge {
+  --chip-color: var(--color-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--color-accent-muted);
+  background: color-mix(in srgb, var(--chip-color) 18%, transparent);
+  font-size: 1.375rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* A small, square, icon-only action button (e.g. a row's Edit/Delete) —
+   distinct from .btn, which always carries visible text. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-target-min);
+  height: var(--tap-target-min);
+  padding: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  color: var(--color-text);
+  border-color: var(--color-text-secondary);
+}
+
+.icon-btn--attention:hover {
+  color: var(--color-status-attention-text);
+  border-color: var(--color-status-attention-text);
+}
+
+/* A card's standard header: icon chip + <h2>, replacing a bare heading
+   wherever a card wants the icon treatment. */
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.section-heading h2 {
+  margin-bottom: 0;
+}
+
+/* ---- Buttons ---- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--tap-target-min);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn--primary {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+.btn--secondary {
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+/* ---- Inputs ---- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.field__label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.field__input {
+  min-height: var(--tap-target-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+}
+
+.field__hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+/* ---- Modal structure (src/ui/components/popup.js — every "add" form in
+   the app opens through this one shared popup) ---- */
+
+@keyframes modal-backdrop-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  z-index: 100;
+  /* `prefers-reduced-motion: reduce` already forces every animation's
+     duration to ~0 globally (src/styles/base.css) — nothing extra needed
+     here to respect it. */
+  animation: modal-backdrop-fade-in 0.16s ease-out;
+}
+
+.modal {
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  overscroll-behavior: contain; /* scrolling a tall form to its end doesn't also scroll the page behind it */
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  animation: modal-pop-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modal__header h2 {
+  margin-bottom: 0;
+}
+
+.modal__body {
+  padding: var(--space-5);
+}
+
+.modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+/* ---- Empty states ---- */
+
+.empty-state {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+/* ---- Status indicators ---- */
+/* Always paired with a visible text label by whoever uses these classes —
+   color is never the only signal (docs/TEST-PLAN.md accessibility
+   checklist). */
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.status--neutral {
+  background: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.status--attention {
+  background: var(--color-status-attention-bg);
+  color: var(--color-status-attention-text);
+}
+
+.status--positive {
+  background: var(--color-status-positive-bg);
+  color: var(--color-status-positive-text);
+}
+
+.status--caution {
+  background: var(--color-status-caution-bg);
+  color: var(--color-status-caution-text);
+}
+
+/* ---- Screens ---- */
+
+.today-header {
+  margin-bottom: var(--space-6);
+}
+
+.today-header__greeting {
+  margin-bottom: var(--space-1);
+}
+
+.today-header__date {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+/* ---- Onboarding (Phase 7) ---- */
+
+/* One question centered on the screen, both axes — at the user's
+   request. `min-height: 100vh` (with a `dvh` upgrade for browsers that
+   support it, more accurate on mobile where the address bar changes the
+   viewport) makes the screen at least viewport-tall regardless of
+   .app-main's own padding, so `justify-content: center` has real room to
+   center within; a step long enough to exceed that just scrolls
+   normally, it's a floor, not a hard clamp. */
+.screen--onboarding {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.screen--onboarding .onboarding-header,
+.screen--onboarding > .card {
+  width: 100%;
+  max-width: 480px;
+}
+
+.onboarding-header {
+  margin-bottom: var(--space-4);
+  text-align: center;
+}
+
+.onboarding-header h1 {
+  margin-bottom: var(--space-2);
+}
+
+.onboarding-header .section-description {
+  margin-bottom: var(--space-2);
+}
+
+.onboarding-progress {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin: 0 0 var(--space-4);
+}
+
+.onboarding-finish {
+  text-align: center;
+}
+
+.onboarding-finish .section-description {
+  margin-bottom: var(--space-4);
+}
+
+.section-description {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  margin-top: calc(var(--space-1) * -1);
+}
+
+/* ---- Expenses period filter (Recent Expenses section) ---- */
+
+.expenses-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.expenses-filter__select {
+  min-height: var(--tap-target-min);
+  flex: 1 1 160px;
+}
+
+.expenses-filter__date {
+  min-height: var(--tap-target-min);
+  flex: 1 1 140px;
+}
+
+.expenses-filter__date-sep {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.expenses-filter__total {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-3);
+}
+
+/* ---- Money list / money items (Phase 2 — Income, Bills, Planned Expenses) ---- */
+
+.money-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.money-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.money-item:last-child {
+  border-bottom: none;
+}
+
+.money-item--editing {
+  display: block;
+  border-bottom: none;
+}
+
+.money-item__body {
+  flex: 1;
+  min-width: 180px;
+}
+
+.money-item__title {
+  display: block;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.money-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.money-item__meta-text {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.money-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.completed-section {
+  color: var(--color-text-secondary);
+}
+
+.completed-section summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  padding: var(--space-2) 0;
+}
+
+/* ---- Money forms (add/edit, Phase 2) ---- */
+
+.money-form {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.money-form__buttons {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.money-form__toggle {
+  margin-top: var(--space-2);
+}
+
+.money-form__details {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.field__error {
+  color: var(--color-status-attention-text);
+  font-size: var(--font-size-xs);
+  margin: calc(var(--space-2) * -1) 0 var(--space-2) 0;
+  min-height: 1em;
+}
+
+.field__error:empty {
+  display: none;
+}
+
+/* Brief, quiet success feedback after a save (Phase 7) — never
+   attention-grabbing, just a plain confirmation. */
+.field__success {
+  color: var(--color-status-positive-text);
+  font-size: var(--font-size-xs);
+  margin: calc(var(--space-2) * -1) 0 var(--space-2) 0;
+  min-height: 1em;
+}
+
+.field__success:empty {
+  display: none;
+}
+
+.btn--small {
+  min-height: var(--tap-target-min);
+  padding: 0 var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+/* ---- Single-value editor (currently just Savings) ---- */
+
+.single-value-form__current {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  margin-bottom: var(--space-3);
+}
+
+/* ---- Safe-to-Spend hero (Phase 4 — the dashboard's primary element) ---- */
+
+.hero {
+  text-align: center;
+  background: linear-gradient(180deg, var(--color-accent-muted), var(--color-surface) 70%);
+  border-color: var(--color-accent-muted);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-6) var(--space-5);
+}
+
+.hero__icon {
+  /* Centered via the inherited `text-align: center` on .hero — the chip is
+     inline-flex, so it participates in that centering like any inline
+     content. */
+  margin-bottom: var(--space-3);
+}
+
+.hero__label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: var(--space-2);
+}
+
+.hero__amount {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-hero);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--space-3);
+  /* Not-negative reads as calm/good — the same green used for income and
+     "on track" elsewhere, never a separate meaning (docs/PRODUCT.md §3). */
+  color: var(--color-status-positive-text);
+}
+
+.hero__amount--negative {
+  color: var(--color-status-attention-text);
+}
+
+.hero__progress {
+  max-width: 320px;
+  margin: 0 auto var(--space-4);
+}
+
+.hero__progress-track {
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--progress-track);
+  overflow: hidden;
+}
+
+.hero__progress-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--color-status-positive-text);
+  transition: width 0.2s ease;
+}
+
+.hero__progress--negative .hero__progress-fill {
+  background: var(--color-status-attention-text);
+}
+
+.hero__progress-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.hero__cta {
+  margin-bottom: var(--space-2);
+}
+
+.hero__description {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  max-width: 32em;
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: var(--space-5);
+}
+
+
+.hero__disclaimer {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+/* ---- This period summary ---- */
+
+.period-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.period-summary__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.period-summary__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.period-summary__label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.period-summary__value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Bills due soon ---- */
+
+.bills-due-soon {
+  background: var(--color-status-caution-bg);
+  border-color: transparent;
+}
+
+.bills-due-soon__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.bills-due-soon__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.bills-due-soon__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 120px;
+}
+
+.bills-due-soon__name {
+  font-weight: 600;
+}
+
+.bills-due-soon__date {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.bills-due-soon__date--overdue {
+  color: var(--color-status-attention-text);
+  font-weight: 600;
+}
+
+.bills-due-soon__amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---- Upcoming income ---- */
+
+.upcoming-income {
+  background: var(--color-status-positive-bg);
+  border-color: transparent;
+}
+
+.upcoming-income__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.upcoming-income__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.upcoming-income__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 120px;
+}
+
+.upcoming-income__name {
+  font-weight: 600;
+}
+
+.upcoming-income__date {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.upcoming-income__amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--color-status-positive-text);
+}
+
+/* ---- Header bar ---- */
+
+.header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.header-bar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.header-bar__brand-name {
+  font-weight: 700;
+  font-size: var(--font-size-lg);
+}
+
+.header-bar__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ---- Period selector (header bar) ---- */
+
+.period-selector {
+  position: relative;
+  display: inline-flex;
+}
+
+/* A transparent full-page click-catcher behind the anchored panel — same
+   sibling-scrim structure as src/ui/components/popup.js's dark backdrop,
+   just invisible and positioned near the trigger instead of centered (see
+   src/ui/components/period-selector.js's doc comment for why this needs
+   no raw `document`-level click listener). */
+.period-selector__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: transparent;
+}
+
+.period-selector__panel {
+  position: absolute;
+  top: 52px;
+  right: 0;
+  z-index: 91;
+  width: min(280px, calc(100vw - var(--space-8)));
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-3);
+}
+
+.period-selector__options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.period-selector__option {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  min-height: var(--tap-target-min);
+}
+
+.period-selector__option:hover {
+  background: var(--color-accent-muted);
+}
+
+.period-selector__option--active {
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.period-selector__custom-range {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+  flex-wrap: wrap;
+}
+
+.period-selector__date {
+  flex: 1 1 110px;
+  min-height: var(--tap-target-min);
+}
+
+/* ---- Card hierarchy: a quieter treatment for secondary/at-a-glance
+   cards (the side column), vs. the full-weight .card used by the hero and
+   Categories — smaller heading, lighter border/shadow, so the page has a
+   visible primary/secondary distinction instead of every card competing
+   at the same visual weight. ---- */
+
+.card--quiet {
+  box-shadow: none;
+  border-color: var(--color-border);
+}
+
+.card--quiet .section-heading h2 {
+  font-size: var(--font-size-base);
+}
+
+/* A card header that also carries a small trailing action (e.g. "+ Add
+   bill" next to "Bills due soon"). */
+.card__header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.card__header-row .section-heading {
+  margin-bottom: 0;
+}
+
+/* A small, unobtrusive text link-as-button (e.g. "+ Add bill", "Edit
+   categories") — distinct from .btn, which always carries a filled/
+   outlined button treatment. */
+.link-button {
+  border: none;
+  background: transparent;
+  color: var(--color-accent);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  padding: var(--space-1) 0;
+  min-height: var(--tap-target-min);
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+/* ---- Categories card ---- */
+
+.category-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.category-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.category-row__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.category-row__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.category-row__name {
+  font-weight: 600;
+}
+
+.category-row__amounts {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.category-row__bar {
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--progress-track);
+  overflow: hidden;
+  margin-bottom: var(--space-1);
+}
+
+.category-row__bar-fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: var(--radius-full);
+}
+
+.category-row__bar-fill--caution {
+  background: var(--color-status-caution-text);
+}
+
+.category-row__bar-fill--attention {
+  background: var(--color-status-attention-text);
+}
+
+.category-row__remaining {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.category-row__remaining--attention {
+  color: var(--color-status-attention-text);
+  font-weight: 600;
+}
+
+/* ---- Privacy reassurance line ---- */
+
+.privacy-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  text-align: center;
+  padding: var(--space-3) 0 0;
+}
+
+/* ---- Fatal error fallback (see src/main.js) ---- */
+
+.fatal-error {
+  margin: var(--space-6) var(--space-4);
+  color: var(--color-text);
+}
+
+.fatal-error__details {
+  margin: 0 var(--space-4);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.fatal-error__details summary {
+  cursor: pointer;
+}
+
+.fatal-error__details pre {
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: var(--font-size-xs);
+}

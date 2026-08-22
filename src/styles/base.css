@@ -1,0 +1,302 @@
+/* Design tokens + reset. See CLAUDE.md "Design system" — calm, minimal,
+   modern, low cognitive load. Colors are semantic tokens so components
+   never hardcode a raw color, and dark mode is a token swap, not a
+   parallel stylesheet.
+
+   Color system: the canonical tokens (`--bg`, `--surface`, `--border`,
+   `--text-primary`, `--text-secondary`, `--accent`, `--accent-bg`,
+   `--warning`, `--warning-bg`, `--danger`, `--progress-track`) are the
+   ones to change if the palette itself ever changes — nothing else in
+   this codebase should. Every existing `--color-*` name a component
+   already uses is kept as a plain alias of one of these (`--color-bg:
+   var(--bg)`, etc.), so the ~180 existing `var(--color-*)` references
+   across components.css/responsive.css never needed a rename; only the
+   values above do. `--danger-bg` and `--color-accent-contrast` aren't
+   part of the given palette (a background tint for danger, and the
+   text color used *on* accent-colored buttons) — derived/kept to match
+   the pattern of the tokens that are. Never pure black/white for
+   `--text-primary`/`--bg` in either mode — see the values below. */
+
+:root {
+  /* ---- Color: light (default) ---- */
+  --bg: #faf7f2;
+  --surface: #ffffff;
+  --border: #eae4da;
+  --text-primary: #2b2a28;
+  --text-secondary: #8b8579;
+  --accent: #4a7c59;
+  --accent-bg: #e8f0e9;
+  --warning: #c08a3e;
+  --warning-bg: #fbf1e1;
+  --danger: #b5654a;
+  --danger-bg: #fbeae3;
+  --progress-track: #efeae2;
+
+  /* ---- Legacy/semantic aliases — every existing component reads these;
+     keeping them means the palette above is the only thing that ever
+     needs to change. `accent` doubles as the one "positive/safe" signal
+     color everywhere (income, a positive Safe-to-Spend, progress fills)
+     — never a separate brand color competing with it. */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-text: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-contrast: #ffffff;
+  --color-accent-muted: var(--accent-bg);
+  --color-focus: var(--accent);
+  --color-status-attention-bg: var(--danger-bg);
+  --color-status-attention-text: var(--danger);
+  --color-status-positive-bg: var(--accent-bg);
+  --color-status-positive-text: var(--accent);
+  --color-status-caution-bg: var(--warning-bg);
+  --color-status-caution-text: var(--warning);
+  --shadow-sm: 0 1px 3px rgba(43, 38, 32, 0.06), 0 1px 2px rgba(43, 38, 32, 0.04);
+  --shadow-md: 0 10px 28px rgba(43, 38, 32, 0.1);
+
+  /* Category accent colors — distinct, warm/pastel hues so a list of mixed
+     categories reads as organized rather than a rainbow. Deliberately not
+     reusing --accent (income/Safe-to-Spend) or --danger (warnings/
+     overdue) — those stay the only two colors with a specific meaning
+     attached; category colors are purely identifying, not judgmental
+     (docs/PRODUCT.md §3). Applied via `iconChip()`/`categoryIconChip()`
+     (src/ui/components/icons.js), never hardcoded per-component. Outside
+     the palette given for the rest of the app — a fixed set of hues has
+     to stay stable for recognizability regardless of theme, the same
+     reason these aren't swapped by the toggle below either, only tuned
+     for contrast against each surface. */
+  --color-cat-groceries: #4a9c7a;
+  --color-cat-eating-out: #c17847;
+  --color-cat-transport: #4a7fb8;
+  --color-cat-shopping: #c96f95;
+  --color-cat-entertainment: #8f6bb8;
+  --color-cat-health: #c17262;
+  --color-cat-subscriptions: #6478b0;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  /* Serif, system-only (no web font — see CLAUDE.md "no network request in
+     normal use") — used sparingly, just the Safe-to-Spend hero amount, for
+     a warmer, more editorial focal point than an all-sans page would give. */
+  --font-serif: Georgia, Cambria, 'Times New Roman', Times, serif;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.375rem;
+  --font-size-2xl: 1.75rem;
+  --font-size-hero: clamp(2.75rem, 9vw, 3.75rem);
+  --line-height-base: 1.5;
+  --line-height-tight: 1.25;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-full: 999px;
+
+  /* Touch target minimum (mobile-first) */
+  --tap-target-min: 44px;
+}
+
+/* Dark theme tokens — a warm dark charcoal, not a neutral/blue-gray dark
+   (the same warm identity as the light theme, not a different app in dark
+   mode), deliberately desaturated/lower-contrast relative to a typical
+   "technical" dark UI to match the light theme's calm, low-cognitive-load
+   feel (CLAUDE.md "Design system"). Applied two ways so both an explicit
+   in-app choice (src/ui/components/theme-toggle.js, `settings.theme`,
+   persisted through the existing storage adapter — see docs/DATA-MODEL.md,
+   already the app's one localStorage path) and the OS-level
+   `prefers-color-scheme` work, with the explicit choice always winning.
+   The toggle works by adding a class to <html> (`src/ui/shell.js`), not
+   an inline style or a second stylesheet:
+   - no stored preference ('system', the default): follows the OS, via the
+     media query below, guarded so an explicit *light* choice on a
+     dark-OS device isn't overridden by it;
+   - an explicit 'dark' choice: applied regardless of the OS, via the
+     plain `.theme-dark` class right after. */
+@media (prefers-color-scheme: dark) {
+  :root:not(.theme-light) {
+    --bg: #1c1b19;
+    --surface: #242320;
+    --border: #38362f;
+    --text-primary: #efeae2;
+    --text-secondary: #9c9689;
+    --accent: #7fae8c;
+    --accent-bg: #26332a;
+    --warning: #d4a05c;
+    --warning-bg: #332b1e;
+    --danger: #c97f63;
+    --danger-bg: #382920;
+    --progress-track: #312f2a;
+
+    --color-bg: var(--bg);
+    --color-surface: var(--surface);
+    --color-text: var(--text-primary);
+    --color-text-secondary: var(--text-secondary);
+    --color-border: var(--border);
+    --color-accent: var(--accent);
+    --color-accent-contrast: #16241c;
+    --color-accent-muted: var(--accent-bg);
+    --color-focus: var(--accent);
+    --color-status-attention-bg: var(--danger-bg);
+    --color-status-attention-text: var(--danger);
+    --color-status-positive-bg: var(--accent-bg);
+    --color-status-positive-text: var(--accent);
+    --color-status-caution-bg: var(--warning-bg);
+    --color-status-caution-text: var(--warning);
+    /* Dark surfaces need a real (if subtle) shadow too, not `none` — a
+       flat dark card next to a dark background has no depth cue at all
+       without one — but kept softer than a typical near-black dark theme. */
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.28);
+    --shadow-md: 0 10px 26px rgba(0, 0, 0, 0.38);
+
+    /* Same hue identity as the light-mode set, tuned for contrast against
+       a dark surface without the higher saturation a "technical" dark UI
+       would use. */
+    --color-cat-groceries: #6bad91;
+    --color-cat-eating-out: #c99a75;
+    --color-cat-transport: #7d9dc4;
+    --color-cat-shopping: #c791a6;
+    --color-cat-entertainment: #a08cc4;
+    --color-cat-health: #c9948a;
+    --color-cat-subscriptions: #8996bf;
+  }
+}
+
+:root.theme-dark {
+  --bg: #1c1b19;
+  --surface: #242320;
+  --border: #38362f;
+  --text-primary: #efeae2;
+  --text-secondary: #9c9689;
+  --accent: #7fae8c;
+  --accent-bg: #26332a;
+  --warning: #d4a05c;
+  --warning-bg: #332b1e;
+  --danger: #c97f63;
+  --danger-bg: #382920;
+  --progress-track: #312f2a;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-text: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-contrast: #16241c;
+  --color-accent-muted: var(--accent-bg);
+  --color-focus: var(--accent);
+  --color-status-attention-bg: var(--danger-bg);
+  --color-status-attention-text: var(--danger);
+  --color-status-positive-bg: var(--accent-bg);
+  --color-status-positive-text: var(--accent);
+  --color-status-caution-bg: var(--warning-bg);
+  --color-status-caution-text: var(--warning);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 10px 26px rgba(0, 0, 0, 0.38);
+  --color-cat-groceries: #6bad91;
+  --color-cat-eating-out: #c99a75;
+  --color-cat-transport: #7d9dc4;
+  --color-cat-shopping: #c791a6;
+  --color-cat-entertainment: #a08cc4;
+  --color-cat-health: #c9948a;
+  --color-cat-subscriptions: #8996bf;
+}
+
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0 0 var(--space-3) 0;
+  line-height: var(--line-height-tight);
+}
+
+h1 {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+}
+
+h2 {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+p {
+  line-height: var(--line-height-base);
+}
+
+img,
+svg {
+  max-width: 100%;
+  display: block;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Visible focus for every interactive element — never rely on color alone
+   and never suppress the browser's default without replacing it. */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

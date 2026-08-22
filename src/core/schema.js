@@ -1,12 +1,11 @@
 // Schema version, empty-state shape, and migration registry for the
 // persisted state tree. See docs/DATA-MODEL.md for the canonical shape
-// and §6 "Schema versioning & migrations" for the policy this implements.
+// and §7 "Schema versioning & migrations" for the policy this implements.
 //
-// No entity modules (tasks, money, etc.) exist yet, so the empty state
-// below only has the shape docs/DATA-MODEL.md §1 defines for an app with
-// nothing captured — every collection empty, settings at their defaults.
+// The empty state below is the budget-product shape (docs/PRODUCT.md) —
+// every collection empty, settings/budget at their defaults.
 
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 7;
 
 /** @returns the state tree for a brand-new install, at the current schema version. */
 export function createEmptyState() {
@@ -20,30 +19,126 @@ export function createEmptyState() {
     settings: {
       onboardingCompletedAt: null,
       displayName: null,
-      payScheduleHint: null,
       theme: 'system',
       reducedMotion: false,
     },
-    tasks: [],
-    routines: { templates: [], instances: [] },
-    calendarEvents: [],
-    money: { accounts: [], transactions: [], knownObligations: [] },
-    goals: [],
-    weeklyReviews: [],
+    budget: {
+      currentBalanceCents: 0,
+      savingsAllocationCents: 0,
+    },
+    incomes: [],
+    bills: [],
+    plannedExpenses: [],
+    expenses: [],
+    categoryBudgets: [],
+    incomeReceipts: [],
+    billPayments: [],
   };
 }
 
 // Each migration transforms state from version (N-1) to version N, and is
-// keyed by its *target* version. There is nothing to migrate yet — v1 is
-// the only version that has ever existed — so this stays empty until the
-// first real schema change. Per docs/DATA-MODEL.md §6, adding one means:
-// bump CURRENT_SCHEMA_VERSION, add `[newVersion]: migrateFn` here, and
-// describe the new shape in docs/DATA-MODEL.md, all in the same change.
+// keyed by its *target* version. Per docs/DATA-MODEL.md §6, adding one
+// means: bump CURRENT_SCHEMA_VERSION, add `[newVersion]: migrateFn` here,
+// and describe the new shape in docs/DATA-MODEL.md, all in the same
+// change.
 //
 // migrateFn shape: (state) => nextState — pure, prefers additive defaults
 // over dropping data.
+
+// v1 Task shape (pre-Phase-2, never shipped with a real Tasks UI):
+//   { id, title, notes, createdAt, completedAt, dueAt, effortMinutes,
+//     energy, context, goalId, source }
+// v2 Task shape (Phase 2 — see docs/DATA-MODEL.md "Task"): adds status,
+// priority, description, scheduledDate/Time, updatedAt; renames
+// dueAt -> dueDate, effortMinutes -> estimatedMinutes, context -> category;
+// drops energy/goalId/source (goalId/source will return, additively, when
+// the Goals module's own migration lands).
+function migrateTaskV1ToV2(task) {
+  return {
+    id: task.id,
+    title: task.title,
+    description: null,
+    status: task.completedAt ? 'completed' : 'todo',
+    priority: 'important',
+    dueDate: task.dueAt ?? null,
+    scheduledDate: null,
+    scheduledTime: null,
+    estimatedMinutes: task.effortMinutes ?? null,
+    category: task.context ?? null,
+    notes: task.notes ?? null,
+    createdAt: task.createdAt,
+    updatedAt: task.createdAt,
+    completedAt: task.completedAt ?? null,
+  };
+}
+
+// v2 -> v3: the product pivoted from a general life planner (Tasks,
+// Routines, Calendar, Goals, Weekly Review) to a focused budget planner
+// (docs/PRODUCT.md §9). The two shapes share no real data — a Task has no
+// budget equivalent — so this migration deliberately *discards* the old
+// tasks/routines/calendarEvents/money/goals/weeklyReviews collections
+// rather than transform them, per the exception documented in
+// docs/DATA-MODEL.md §7. `settings.payScheduleHint` (free-text) is
+// likewise dropped — Income.nextDate replaces it with a structured value.
+// What *does* carry over: meta and the settings fields that still apply
+// (onboardingCompletedAt/displayName/theme/reducedMotion).
+function migrateV2ToV3(state) {
+  return {
+    meta: state.meta,
+    settings: {
+      onboardingCompletedAt: state.settings?.onboardingCompletedAt ?? null,
+      displayName: state.settings?.displayName ?? null,
+      theme: state.settings?.theme ?? 'system',
+      reducedMotion: state.settings?.reducedMotion ?? false,
+    },
+    budget: { currentBalanceCents: 0, savingsAllocationCents: 0, safetyBufferCents: 0 },
+    incomes: [],
+    bills: [],
+    plannedExpenses: [],
+  };
+}
+
+// v3 -> v4: adds the `expenses` collection (Phase 5 — Expense Tracking).
+// Purely additive; nothing else changes shape. See docs/DATA-MODEL.md
+// "Expense" and "Current Balance model".
+function migrateV3ToV4(state) {
+  return { ...state, expenses: state.expenses ?? [] };
+}
+
+// v4 -> v5: adds the `categoryBudgets` collection (Phase 6 — Budget
+// Planning). Purely additive; nothing else changes shape. See
+// docs/DATA-MODEL.md "CategoryBudget".
+function migrateV4ToV5(state) {
+  return { ...state, categoryBudgets: state.categoryBudgets ?? [] };
+}
+
+// v5 -> v6: adds the `incomeReceipts` collection — a real historical log
+// of confirmed income (one record per "Mark received"), so an unbounded
+// period ("All time") can sum actual received income instead of either a
+// meaningless "every future paycheck forever" or a non-answer. Purely
+// additive; nothing else changes shape. See docs/DATA-MODEL.md
+// "IncomeReceipt".
+function migrateV5ToV6(state) {
+  return { ...state, incomeReceipts: state.incomeReceipts ?? [] };
+}
+
+// v6 -> v7: adds the `billPayments` collection — the Bill-side counterpart
+// to `incomeReceipts`, a real historical log of confirmed payments (one
+// record per "Mark paid"), so a period's "Money out" can include what was
+// actually paid, not every bill merely *due* in that window. Purely
+// additive; nothing else changes shape. See docs/DATA-MODEL.md
+// "BillPayment".
+function migrateV6ToV7(state) {
+  return { ...state, billPayments: state.billPayments ?? [] };
+}
+
 const migrations = {
-  // 2: (state) => ({ ...state, ... }),
+  2: (state) => ({ ...state, tasks: (state.tasks ?? []).map(migrateTaskV1ToV2) }),
+  3: migrateV2ToV3,
+  4: migrateV3ToV4,
+  5: migrateV4ToV5,
+  6: migrateV5ToV6,
+  7: migrateV6ToV7,
 };
 
 /**
@@ -79,5 +174,22 @@ export function migrate(state, options = {}) {
     }
   }
 
-  return { ...migrated, schemaVersion: currentVersion };
+  return normalizeCollections({ ...migrated, schemaVersion: currentVersion });
+}
+
+// The list-shaped collections every list-entity reducer (src/core/
+// list-entity.js) expects to be able to spread/index/findIndex into.
+// Guaranteeing this once, here — the one place all persisted state passes
+// through — means every reducer, selector, and the Safe-to-Spend
+// calculation can trust these are always real arrays, even if the raw
+// stored value degraded into something else (an object, a string, `null`)
+// through hand-editing or a future bug. See Phase 8 QA (docs/QA-REPORT.md).
+const ARRAY_COLLECTION_KEYS = ['incomes', 'bills', 'plannedExpenses', 'expenses', 'categoryBudgets', 'incomeReceipts', 'billPayments'];
+
+function normalizeCollections(state) {
+  const normalized = { ...state };
+  for (const key of ARRAY_COLLECTION_KEYS) {
+    if (!Array.isArray(normalized[key])) normalized[key] = [];
+  }
+  return normalized;
 }

@@ -1,0 +1,59 @@
+/* Responsive layout. See CLAUDE.md "Responsive design" — mobile is a
+   first-class experience, not an afterthought: touch targets stay
+   >= 44px, text stays readable, cards stay uncramped.
+
+   Breakpoints: mobile (default, up to 639px), tablet (640-1023px),
+   desktop (1024px+). */
+
+/* Tablet and up: content gets a comfortable centered measure instead of
+   stretching edge to edge. */
+@media (min-width: 640px) {
+  .app-main {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: var(--space-6) var(--space-4);
+  }
+}
+
+/* Desktop: a bit more breathing room, and enough width for the dashboard's
+   two-column arrangement below. */
+@media (min-width: 1024px) {
+  .app-main {
+    max-width: 1040px;
+    padding: var(--space-8) var(--space-4);
+  }
+
+  /* The dashboard's cards sit side by side instead of one long stack — a
+     wider, full-weight "main" column (the Safe-to-Spend hero, Categories,
+     Expenses) and a narrower, visually quieter "side" column (This
+     period, Bills due soon, Savings, the privacy note). Mobile/tablet
+     stay a single stacked column (the default — no grid needed below
+     this width; every card already has its own spacing via .card's
+     margin-bottom). */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    align-items: start;
+    gap: var(--space-5);
+  }
+
+  .dashboard-grid__main,
+  .dashboard-grid__side {
+    min-width: 0; /* let cards shrink instead of overflowing the column */
+  }
+}
+
+/* Narrow phones: keep money-item actions from cramming onto the title's
+   row (Phase 2 §12 — "cards do not become cramped"). */
+@media (max-width: 420px) {
+  .money-item__actions {
+    width: 100%;
+  }
+
+  /* A period-selector panel positioned from a fixed pixel offset (see
+     components.css) can otherwise run close to a narrow phone's edge —
+     give it a touch more breathing room from the right. */
+  .period-selector__panel {
+    right: calc(var(--space-2) * -1);
+  }
+}
