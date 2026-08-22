@@ -66,43 +66,79 @@ export function renderDashboard({ state, dispatch, now = new Date(), requestRend
     requestRender,
   });
 
-  // Two columns at desktop width (src/styles/responsive.css
-  // `.dashboard-grid`) — a wider "main" column for the primary
-  // money-management content (hero, categories, expenses) and a narrower,
-  // visually quieter "side" column for at-a-glance secondary summaries.
-  // Mobile/tablet render these two wrapper divs as a plain single stack.
-  const mainColumn = el('div', { class: 'dashboard-grid__main' }, [
-    renderSafeToSpendHero(result, { state, dispatch, requestRender }),
-    renderCategoryBudgetsSection({ state, dispatch, now, requestRender }),
-    renderExpensesSection({ state, dispatch, requestRender, period: selectedPeriod }),
+  // Each card is tagged with its own `dashboard-grid__item--*` class so
+  // CSS can order it independently per breakpoint (src/styles/
+  // components.css / responsive.css). Cards are grouped into two
+  // `.dashboard-grid__col` wrapper divs — "main" (hero, categories,
+  // expenses) and "side" (this period, current balance, upcoming income,
+  // bills due soon, savings, the privacy note) — but that grouping only
+  // matters at desktop width. On mobile, `.dashboard-grid__col` is
+  // `display: contents` (removes its own box, promoting its children to
+  // direct flex items of `.dashboard-grid`), so every card still follows
+  // one flat `order` sequence there: hero -> balance -> this period ->
+  // categories -> expenses -> upcoming income -> bills -> savings ->
+  // privacy, the priority order asked for on a phone.
+  //
+  // The two-wrapper-div split was tried once before and reverted in
+  // favor of one flat grid, because that version hard-coded DOM order as
+  // layout order (see the now-superseded comment this replaced) — no
+  // `order` property was involved, so mobile had no way to reorder
+  // Current Balance/This Period ahead of Categories/Expenses without
+  // literally moving them in the DOM. This version keeps the flat
+  // `order`-driven approach for mobile but fixes a real desktop bug that
+  // approach introduced: making every card a *direct* grid item left
+  // rows auto-placed and shared across both columns, so a row's height
+  // was forced to fit whichever column's card in that row was tallest —
+  // pairing the tall Hero with the much shorter "This period" card left
+  // "This period" stranded with a large empty gap below it before the
+  // next row could start, and it compounded down the whole side column
+  // (reported directly by the user from a screenshot). Wrapping each
+  // column in its own flex container at desktop (`.dashboard-grid__col`,
+  // responsive.css) gives each column independent stacking, immune to
+  // the other column's card heights, while `display: contents` keeps the
+  // exact same DOM available for mobile's flat `order` sequence.
+  function gridItem(slot, node) {
+    return el('div', { class: `dashboard-grid__item dashboard-grid__item--${slot}` }, node);
+  }
+
+  const mainColumn = el('div', { class: 'dashboard-grid__col dashboard-grid__col--main' }, [
+    gridItem('hero', renderSafeToSpendHero(result, { state, dispatch, requestRender })),
+    gridItem('categories', renderCategoryBudgetsSection({ state, dispatch, now, requestRender })),
+    gridItem('expenses', renderExpensesSection({ state, dispatch, requestRender, period: selectedPeriod })),
   ]);
 
-  const sideColumn = el('div', { class: 'dashboard-grid__side' }, [
-    renderPeriodSummary(periodSummary),
-    renderSingleValueSection({
-      id: 'current-balance-heading',
-      title: 'Current balance',
-      description: 'What you actually have right now.',
-      valueCents: getCurrentBalanceCents(state),
-      onSave: (cents) => dispatch(setCurrentBalanceAction(cents)),
-      allowNegative: true,
-      icon: 'wallet',
-      requestRender,
-    }),
-    renderUpcomingIncome({ state, dispatch, now, requestRender }),
-    renderBillsDueSoon({ state, dispatch, now, requestRender }),
-    renderSingleValueSection({
-      id: 'savings-heading',
-      title: 'Savings',
-      description: 'Money set aside and protected from discretionary spending.',
-      valueCents: getSavingsAllocationCents(state),
-      onSave: (cents) => dispatch(addToSavingsAction(cents)),
-      onEditTotal: (cents) => dispatch(setSavingsAllocationAction(cents)),
-      icon: 'target',
-      additive: true,
-      requestRender,
-    }),
-    el('p', { class: 'privacy-note' }, [icon('shield'), 'Your data stays on this device — private, no accounts.']),
+  const sideColumn = el('div', { class: 'dashboard-grid__col dashboard-grid__col--side' }, [
+    gridItem('period', renderPeriodSummary(periodSummary)),
+    gridItem(
+      'balance',
+      renderSingleValueSection({
+        id: 'current-balance-heading',
+        title: 'Current balance',
+        description: 'What you actually have right now.',
+        valueCents: getCurrentBalanceCents(state),
+        onSave: (cents) => dispatch(setCurrentBalanceAction(cents)),
+        allowNegative: true,
+        icon: 'wallet',
+        requestRender,
+      })
+    ),
+    gridItem('income', renderUpcomingIncome({ state, dispatch, now, requestRender })),
+    gridItem('bills', renderBillsDueSoon({ state, dispatch, now, requestRender })),
+    gridItem(
+      'savings',
+      renderSingleValueSection({
+        id: 'savings-heading',
+        title: 'Savings',
+        description: 'Money set aside and protected from discretionary spending.',
+        valueCents: getSavingsAllocationCents(state),
+        onSave: (cents) => dispatch(addToSavingsAction(cents)),
+        onEditTotal: (cents) => dispatch(setSavingsAllocationAction(cents)),
+        icon: 'target',
+        additive: true,
+        requestRender,
+      })
+    ),
+    gridItem('privacy', el('p', { class: 'privacy-note' }, [icon('shield'), 'Your data stays on this device — private, no accounts.'])),
   ]);
 
   return el('div', { class: 'screen screen--dashboard' }, [

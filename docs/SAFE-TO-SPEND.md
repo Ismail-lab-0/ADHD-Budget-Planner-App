@@ -221,35 +221,48 @@ Each Bill record has a `recurrence` and a `dueDate`.
 
 ## 7. How already-paid bills are handled
 
-A bill with `paid: true` is **excluded entirely** from the calculation,
-regardless of its due date. The presumption is that the money has already
-left the account (and Current Balance has already been updated to
-reflect that), so including it again would double-subtract it.
+**This section describes a superseded design — kept for the historical
+account of a real reported bug and its fix, since §2 now describes a
+different, later formula.** Through the version of this formula that
+subtracted `upcomingBillsCents` as a committed term (§2's earlier
+revision), a bill with `paid: true` was excluded entirely from the
+calculation, on the presumption that the money had already left the
+account. Before `src/modules/bills/balance-effect.js` existed, nothing
+ever actually debited `currentBalanceCents` when a bill was marked
+paid — so excluding it from the subtracted total made `safeToSpendCents`
+visibly *increase* the moment a bill was marked paid, as if the money had
+"come back." The fix at the time was `toggleBillPaidAction` debiting
+Current Balance by the bill's amount in the same state transition, so the
+two changes canceled out by construction and `safeToSpendCents` didn't
+move when a bill was marked paid.
 
-**That presumption is now actually enforced, not just assumed.** Marking
-a bill paid (`toggleBillPaidAction`) automatically debits Current Balance
-by its amount in the same state transition — see `docs/DATA-MODEL.md`
-§3a and `src/modules/bills/balance-effect.js`. This closed a real
-reported bug: before that effect existed, excluding a paid bill here
-(reducing `upcomingBillsCents`) with nothing ever actually leaving
-`currentBalanceCents` meant `safeToSpendCents` visibly *increased* the
-moment a bill was marked paid — the amount appeared to "come back"
-instead of having been spent. Now the two changes cancel out by
-construction: `upcomingBillsCents` drops by the bill's amount at exactly
-the moment `currentBalanceCents` drops by the same amount, so
-`safeToSpendCents` itself doesn't move when a bill is marked paid — which
-is the entire point of this section's "excluded entirely" rule.
+**As of the current formula (§2), that cancellation no longer applies,
+because there's nothing left to cancel against.** An unpaid bill was
+never subtracted in the first place, so there's no "committed" figure for
+a paid bill to be excluded from. What still applies, unchanged, is the
+underlying mechanism: marking a bill paid (`toggleBillPaidAction`) still
+debits Current Balance by its amount in the same state transition (see
+`docs/DATA-MODEL.md` §3a and `src/modules/bills/balance-effect.js`) — and
+un-marking it still refunds that debit. The *effect* on
+`safeToSpendCents` is now different, and simpler: marking a bill paid
+is the first and only time that bill's amount reduces Safe-to-Spend at
+all, by exactly its amount (via the balance debit, the same mechanism an
+Expense already uses) — not a cancellation of an earlier subtraction.
+`upcomingBillsCents` (whether the bill is currently unpaid, and its
+amount) plays no role in this at all anymore; it's purely a display-only
+figure (§2).
 
-**Known limitation:** the data model tracks `paid` as a single flat
-boolean, not per-cycle. For a recurring bill, marking it paid excludes it
-from *every* future calculation until the user manually marks it unpaid
-again — there's no way for the app to know "last month's rent was paid,
-but this month's isn't yet." This was a deliberate simplification in
-`docs/ROADMAP.md` Phase 2 ("do not build advanced forecasting yet") and
-is called out here rather than silently worked around, per this
-document's "state every decision explicitly" standard. A future phase
-could address this by tracking paid status per occurrence rather than per
-record — a schema change, not a formula change.
+**Known limitation, unchanged by this history:** the data model tracks
+`paid` as a single flat boolean, not per-cycle. For a recurring bill,
+marking it paid doesn't reset for the next cycle on its own — the user
+has to manually mark it unpaid again — there's no way for the app to know
+"last month's rent was paid, but this month's isn't yet." This was a
+deliberate simplification in `docs/ROADMAP.md` Phase 2 ("do not build
+advanced forecasting yet") and is called out here rather than silently
+worked around, per this document's "state every decision explicitly"
+standard. A future phase could address this by tracking paid status per
+occurrence rather than per record — a schema change, not a formula
+change.
 
 ## 8. How planned expenses are handled
 
@@ -344,13 +357,14 @@ whenever there's no determinable horizon.
 progress visual)
 
 `totalCommittedCents` — the exact sum already computed in §2's formula
-(`upcomingBillsCents + plannedExpensesCents + savingsAllocationCents`),
-also returned on the result object. This is not a new
-calculation — it's the same intermediate value the engine already produces
-on its way to `safeToSpendCents`, just no longer kept private. Added so a
-UI can show "$X committed of $Y available" (e.g. a progress bar under the
-hero) without recomputing that sum itself in `src/ui/` — see CLAUDE.md's
-rule that money arithmetic belongs in this module, never the UI layer.
+(`plannedExpensesCents + savingsAllocationCents` — **bills are not part of
+this sum**, see §2), also returned on the result object. This is not a
+new calculation — it's the same intermediate value the engine already
+produces on its way to `safeToSpendCents`, just no longer kept private.
+Added so a UI can show "$X committed of $Y available" (e.g. a progress
+bar under the hero) without recomputing that sum itself in `src/ui/` —
+see CLAUDE.md's rule that money arithmetic belongs in this module, never
+the UI layer.
 
 ## 12. Language and framing
 
@@ -379,10 +393,10 @@ returns:
 {
   "currentBalanceCents": "number — echoes budget.currentBalanceCents",
   "upcomingIncomeCents": "number — display-only, see §11a; never part of the arithmetic",
-  "upcomingBillsCents": "number — sum of bills counted, see §4/§6",
+  "upcomingBillsCents": "number — display-only, see §2/§4/§6; never part of the arithmetic",
   "plannedExpensesCents": "number — sum of planned expenses counted, see §4/§8",
   "savingsAllocationCents": "number — echoes budget.savingsAllocationCents",
-  "totalCommittedCents": "number — sum of the three subtracted figures above, see §11b",
+  "totalCommittedCents": "number — sum of the two subtracted figures above, see §11b",
   "safeToSpendCents": "number — can be negative, see §10",
   "nextPaydayDate": "YYYY-MM-DD | null — the horizon, see §4/§5",
   "daysUntilPayday": "number | null — see §11",

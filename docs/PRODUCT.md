@@ -173,12 +173,20 @@ Illustrative shape (**not final** — see the note below):
 
 ```
 Current balance:        $2,450
-Upcoming bills:         -$1,200
 Planned expenses:         -$300
 Savings:                  -$200
 ─────────────────────────────────
-Safe to spend:             $750
+Safe to spend:           $1,950
+
+Upcoming bills:          $1,200  (shown for awareness — doesn't
+                                  reduce Safe-to-Spend until paid)
 ```
+
+Bills only subtract once actually marked paid, at the user's explicit
+request — see `docs/SAFE-TO-SPEND.md` §2/§7 for the full reasoning and
+history (an earlier version of this illustration, and of the formula
+itself, subtracted an "Upcoming bills" line the same way Planned Expenses
+still does).
 
 **This example is not the final formula.** Before any Safe-to-Spend code is
 written, the exact calculation must be formally defined — what "upcoming"

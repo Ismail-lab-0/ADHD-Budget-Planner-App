@@ -618,6 +618,59 @@ ul {
   margin: 0;
 }
 
+/* ---- Dashboard grid ---- */
+
+/* Base (mobile-first) layout: a single column, every card an explicit
+   grid item with its own `order` so mobile can read in a different,
+   priority-driven sequence than desktop's two-column grouping — see
+   src/ui/screens/dashboard.js's comment. Desktop overrides
+   `grid-template-columns` and each item's `grid-column`/`order` in
+   src/styles/responsive.css; this base layer is what phones/tablets
+   actually use. Spacing between cards comes from `gap` here, not from
+   `.card`'s own `margin-bottom` (zeroed just below) — using the card's
+   own margin for this used to leave an inconsistent, sometimes-zero gap
+   depending on which card happened to land last inside a now-removed
+   wrapper div (reported directly by the user as "not enough space").
+   Directly after the hero: Current balance, then This period, then
+   everything else — the priority order the user asked for on a phone.
+
+   `.dashboard-grid__col` (the "main"/"side" wrapper each card slot sits
+   inside — see dashboard.js) is `display: contents` here: it removes
+   itself from layout so its children become direct flex items of
+   `.dashboard-grid` and follow the flat `order` values below. This is
+   what makes the mobile stacking order correct while still letting the
+   two columns stack independently at desktop (src/styles/responsive.css)
+   — see that file's comment for the CSS Grid bug this replaced (a shared
+   row-track height was stranding side-column cards under huge gaps,
+   reported directly by the user from a screenshot). */
+.dashboard-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.dashboard-grid__col {
+  display: contents;
+}
+
+.dashboard-grid__item {
+  min-width: 0; /* let cards shrink instead of overflowing their column */
+}
+
+.dashboard-grid .card {
+  margin-bottom: 0;
+}
+
+.dashboard-grid__item--hero { order: 1; }
+.dashboard-grid__item--balance { order: 2; }
+.dashboard-grid__item--period { order: 3; }
+.dashboard-grid__item--categories { order: 4; }
+.dashboard-grid__item--expenses { order: 5; }
+.dashboard-grid__item--income { order: 6; }
+.dashboard-grid__item--bills { order: 7; }
+.dashboard-grid__item--savings { order: 8; }
+.dashboard-grid__item--privacy { order: 9; }
+
 /* ---- Onboarding (Phase 7) ---- */
 
 /* One question centered on the screen, both axes — at the user's
@@ -1348,24 +1401,56 @@ ul {
     padding: var(--space-8) var(--space-4);
   }
 
-  /* The dashboard's cards sit side by side instead of one long stack — a
-     wider, full-weight "main" column (the Safe-to-Spend hero, Categories,
+  /* Two columns: a wider, full-weight "main" column (Hero, Categories,
      Expenses) and a narrower, visually quieter "side" column (This
-     period, Bills due soon, Savings, the privacy note). Mobile/tablet
-     stay a single stacked column (the default — no grid needed below
-     this width; every card already has its own spacing via .card's
-     margin-bottom). */
+     period, Current balance, Upcoming income, Bills due soon, Savings,
+     the privacy note) — unchanged from before the mobile-ordering fix
+     below; only the mechanism changed (see dashboard.js's comment).
+
+     Found and fixed a real layout bug here, reported directly by the
+     user from a screenshot: the previous version made every card a
+     direct item of one CSS Grid, pinning only its *column* explicitly
+     and leaving its *row* to auto-placement — which packs items row by
+     row across BOTH columns, so a row's height is forced to fit
+     whichever column's card lands in it is tallest. Pairing the huge
+     Hero card into the same row as the much shorter "This period" card
+     left "This period" stranded with a large empty gap below it before
+     the next row (Current balance) could start, and the same thing
+     compounded down the rest of the side column. Fixed by giving each
+     column its own independent flex stack (`.dashboard-grid__col`,
+     wrapping the main/side card slots — see dashboard.js) instead of
+     relying on shared grid row-tracks; `.dashboard-grid` itself now only
+     arranges the two column wrappers side by side. */
   .dashboard-grid {
     display: grid;
     grid-template-columns: 2fr 1fr;
     align-items: start;
+  }
+
+  .dashboard-grid__col {
+    display: flex;
+    flex-direction: column;
     gap: var(--space-5);
   }
 
-  .dashboard-grid__main,
-  .dashboard-grid__side {
-    min-width: 0; /* let cards shrink instead of overflowing the column */
+  .dashboard-grid__col--main {
+    grid-column: 1;
   }
+
+  .dashboard-grid__col--side {
+    grid-column: 2;
+  }
+
+  .dashboard-grid__item--hero { order: 1; }
+  .dashboard-grid__item--categories { order: 2; }
+  .dashboard-grid__item--expenses { order: 3; }
+
+  .dashboard-grid__item--period { order: 1; }
+  .dashboard-grid__item--balance { order: 2; }
+  .dashboard-grid__item--income { order: 3; }
+  .dashboard-grid__item--bills { order: 4; }
+  .dashboard-grid__item--savings { order: 5; }
+  .dashboard-grid__item--privacy { order: 6; }
 }
 
 /* Narrow phones: keep money-item actions from cramming onto the title's
@@ -4066,18 +4151,18 @@ const billsReducer = createListReducer({
 // the `field: 'active'` toggle never touch the balance, same as before
 // this existed.
 //
-// Why this needed fixing: `sumCommittedBills` (src/modules/safe-to-spend/
-// calculation.js) excludes paid bills from `upcomingBillsCents` — so the
-// moment a bill is marked paid, Safe-to-Spend goes *up* by that amount,
-// since less is being subtracted. Without a balance effect, nothing ever
-// actually left Current Balance, so that money looked like it "came
-// back" (reported as a bug — the reason this file exists). Marking paid
-// now debits the balance by the bill's amount in the same state
-// transition, so the two cancel out: money that was reserved (subtracted
-// via `upcomingBillsCents`) becomes money that's spent (subtracted via a
-// lower `currentBalanceCents` instead) — Safe-to-Spend doesn't move.
-// Un-marking a bill as paid (toggling back to unpaid) symmetrically
-// refunds it, mirroring an Expense delete.
+// Why this exists: originally added to fix a real reported bug, back when
+// `sumCommittedBills` (src/modules/safe-to-spend/calculation.js) excluded
+// paid bills from a subtracted `upcomingBillsCents` term — without this
+// effect, nothing ever actually left Current Balance when a bill was
+// marked paid, so Safe-to-Spend visibly went *up* by that amount, as if
+// the money had "come back." As of a later, explicit user request, bills
+// no longer subtract from Safe-to-Spend at all while unpaid (see
+// docs/SAFE-TO-SPEND.md §2/§7) — so this debit is no longer "canceling
+// out" an earlier subtraction, it's the *only* time a bill's amount ever
+// reduces Safe-to-Spend, the first and only time it counts. Un-marking a
+// bill as paid (toggling back to unpaid) symmetrically refunds it,
+// mirroring an Expense delete.
 //
 // Deliberately narrower than Expenses, same simplification already
 // documented for Income: editing a bill's amount or deleting it after
@@ -5661,43 +5746,79 @@ function renderDashboard({ state, dispatch, now = new Date(), requestRender }) {
     requestRender,
   });
 
-  // Two columns at desktop width (src/styles/responsive.css
-  // `.dashboard-grid`) — a wider "main" column for the primary
-  // money-management content (hero, categories, expenses) and a narrower,
-  // visually quieter "side" column for at-a-glance secondary summaries.
-  // Mobile/tablet render these two wrapper divs as a plain single stack.
-  const mainColumn = el('div', { class: 'dashboard-grid__main' }, [
-    renderSafeToSpendHero(result, { state, dispatch, requestRender }),
-    renderCategoryBudgetsSection({ state, dispatch, now, requestRender }),
-    renderExpensesSection({ state, dispatch, requestRender, period: selectedPeriod }),
+  // Each card is tagged with its own `dashboard-grid__item--*` class so
+  // CSS can order it independently per breakpoint (src/styles/
+  // components.css / responsive.css). Cards are grouped into two
+  // `.dashboard-grid__col` wrapper divs — "main" (hero, categories,
+  // expenses) and "side" (this period, current balance, upcoming income,
+  // bills due soon, savings, the privacy note) — but that grouping only
+  // matters at desktop width. On mobile, `.dashboard-grid__col` is
+  // `display: contents` (removes its own box, promoting its children to
+  // direct flex items of `.dashboard-grid`), so every card still follows
+  // one flat `order` sequence there: hero -> balance -> this period ->
+  // categories -> expenses -> upcoming income -> bills -> savings ->
+  // privacy, the priority order asked for on a phone.
+  //
+  // The two-wrapper-div split was tried once before and reverted in
+  // favor of one flat grid, because that version hard-coded DOM order as
+  // layout order (see the now-superseded comment this replaced) — no
+  // `order` property was involved, so mobile had no way to reorder
+  // Current Balance/This Period ahead of Categories/Expenses without
+  // literally moving them in the DOM. This version keeps the flat
+  // `order`-driven approach for mobile but fixes a real desktop bug that
+  // approach introduced: making every card a *direct* grid item left
+  // rows auto-placed and shared across both columns, so a row's height
+  // was forced to fit whichever column's card in that row was tallest —
+  // pairing the tall Hero with the much shorter "This period" card left
+  // "This period" stranded with a large empty gap below it before the
+  // next row could start, and it compounded down the whole side column
+  // (reported directly by the user from a screenshot). Wrapping each
+  // column in its own flex container at desktop (`.dashboard-grid__col`,
+  // responsive.css) gives each column independent stacking, immune to
+  // the other column's card heights, while `display: contents` keeps the
+  // exact same DOM available for mobile's flat `order` sequence.
+  function gridItem(slot, node) {
+    return el('div', { class: `dashboard-grid__item dashboard-grid__item--${slot}` }, node);
+  }
+
+  const mainColumn = el('div', { class: 'dashboard-grid__col dashboard-grid__col--main' }, [
+    gridItem('hero', renderSafeToSpendHero(result, { state, dispatch, requestRender })),
+    gridItem('categories', renderCategoryBudgetsSection({ state, dispatch, now, requestRender })),
+    gridItem('expenses', renderExpensesSection({ state, dispatch, requestRender, period: selectedPeriod })),
   ]);
 
-  const sideColumn = el('div', { class: 'dashboard-grid__side' }, [
-    renderPeriodSummary(periodSummary),
-    renderSingleValueSection({
-      id: 'current-balance-heading',
-      title: 'Current balance',
-      description: 'What you actually have right now.',
-      valueCents: getCurrentBalanceCents(state),
-      onSave: (cents) => dispatch(setCurrentBalanceAction(cents)),
-      allowNegative: true,
-      icon: 'wallet',
-      requestRender,
-    }),
-    renderUpcomingIncome({ state, dispatch, now, requestRender }),
-    renderBillsDueSoon({ state, dispatch, now, requestRender }),
-    renderSingleValueSection({
-      id: 'savings-heading',
-      title: 'Savings',
-      description: 'Money set aside and protected from discretionary spending.',
-      valueCents: getSavingsAllocationCents(state),
-      onSave: (cents) => dispatch(addToSavingsAction(cents)),
-      onEditTotal: (cents) => dispatch(setSavingsAllocationAction(cents)),
-      icon: 'target',
-      additive: true,
-      requestRender,
-    }),
-    el('p', { class: 'privacy-note' }, [icon('shield'), 'Your data stays on this device — private, no accounts.']),
+  const sideColumn = el('div', { class: 'dashboard-grid__col dashboard-grid__col--side' }, [
+    gridItem('period', renderPeriodSummary(periodSummary)),
+    gridItem(
+      'balance',
+      renderSingleValueSection({
+        id: 'current-balance-heading',
+        title: 'Current balance',
+        description: 'What you actually have right now.',
+        valueCents: getCurrentBalanceCents(state),
+        onSave: (cents) => dispatch(setCurrentBalanceAction(cents)),
+        allowNegative: true,
+        icon: 'wallet',
+        requestRender,
+      })
+    ),
+    gridItem('income', renderUpcomingIncome({ state, dispatch, now, requestRender })),
+    gridItem('bills', renderBillsDueSoon({ state, dispatch, now, requestRender })),
+    gridItem(
+      'savings',
+      renderSingleValueSection({
+        id: 'savings-heading',
+        title: 'Savings',
+        description: 'Money set aside and protected from discretionary spending.',
+        valueCents: getSavingsAllocationCents(state),
+        onSave: (cents) => dispatch(addToSavingsAction(cents)),
+        onEditTotal: (cents) => dispatch(setSavingsAllocationAction(cents)),
+        icon: 'target',
+        additive: true,
+        requestRender,
+      })
+    ),
+    gridItem('privacy', el('p', { class: 'privacy-note' }, [icon('shield'), 'Your data stays on this device — private, no accounts.'])),
   ]);
 
   return el('div', { class: 'screen screen--dashboard' }, [

@@ -131,18 +131,14 @@ confirmed paid.** Concretely:
   — see `src/modules/incomes/reducer.js`.
 - Marking a `Bill` **paid** (`toggleBillPaidAction`, the "Mark paid"
   button on the "Bills due soon" card) **automatically debits** the
-  balance by its amount; toggling it back to unpaid refunds it. Added even
-  later than Income's version, fixing a real reported bug: `sumCommittedBills`
-  (`docs/SAFE-TO-SPEND.md`) excludes paid bills from `upcomingBillsCents`,
-  so marking a bill paid used to make Safe-to-Spend go *up* — the amount
-  stopped being subtracted as "committed" without ever actually being
-  subtracted from the balance either, so it looked like the money "came
-  back." Now the two cancel out: money that was reserved (subtracted via
-  `upcomingBillsCents`) becomes money that's spent (subtracted via a lower
-  `currentBalanceCents` instead) the moment it's confirmed paid —
-  Safe-to-Spend doesn't move. Marking paid also logs a `BillPayment` (see
-  that entity below) — the same idea as `IncomeReceipt`, the Bill side of
-  it — un-marking removes that log entry again, undoing it.
+  balance by its amount; toggling it back to unpaid refunds it. Originally
+  added to fix a real reported bug (see `docs/SAFE-TO-SPEND.md` §7 for that
+  history); **as of a later, explicit user request, this debit is now the
+  *only* way a Bill affects Safe-to-Spend at all** — an unpaid bill,
+  however soon it's due, has zero effect (`docs/SAFE-TO-SPEND.md` §2).
+  Marking paid also logs a `BillPayment` (see that entity below) — the
+  same idea as `IncomeReceipt`, the Bill side of it — un-marking removes
+  that log entry again, undoing it.
 - **Both Income and Bills are scoped narrower than Expenses**: editing or
   deleting an income/bill that was already marked received/paid does
   **not** retroactively adjust the balance (a recurring income doesn't

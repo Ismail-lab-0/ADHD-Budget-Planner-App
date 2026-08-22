@@ -930,6 +930,101 @@ ever summed `Expense`s; a paid Bill never contributed to it at all, only
   describing both Income and Bills as three-way) updated in the same
   change.
 
+**Bills no longer reduce Safe-to-Spend until marked paid — a formula
+change, not a display fix, made at the user's explicit request after
+confirming via `AskUserQuestion` that this really was meant to change the
+core number (not just a card, or the already-separate "This Period"
+money-out figure fixed in the paragraph above this one).** Previously,
+`getSafeToSpend` subtracted every active, unpaid bill due on or before
+the payday horizon as a committed term (§2 of the version of
+`docs/SAFE-TO-SPEND.md` that predates this change) — the same treatment
+Planned Expenses still get. Now bills contribute **nothing** to
+`safeToSpendCents`/`totalCommittedCents` while unpaid, regardless of due
+date; the only thing that ever reduces Safe-to-Spend because of a bill is
+`toggleBillPaidAction` ("Mark paid"), which — unchanged — debits Current
+Balance by the bill's amount, flowing into `safeToSpendCents` the same
+way any other dollar in that checkpoint does. This makes Bills symmetric
+with Income (`docs/SAFE-TO-SPEND.md` §3): informational until a real,
+dated, user-confirmed event happens, never subtracted on the strength of
+a schedule alone.
+- `src/modules/safe-to-spend/calculation.js`: the bill-summing helper
+  (renamed `sumCommittedBills` → `sumUpcomingBills`) is unchanged in what
+  it computes, but its result (`upcomingBillsCents`) is no longer folded
+  into `totalCommittedCents` — it's returned purely for display, the same
+  treatment `upcomingIncomeCents` already had. No UI currently renders it
+  (verified by grep) — same "leave it available, don't delete it" call as
+  `getIncomeOccurrencesInRange` earlier in this file.
+- No schema change — this is pure arithmetic, no stored shape changed.
+- `docs/SAFE-TO-SPEND.md` §2 rewritten (the formula itself, and the
+  reasoning for the change); §7 (paid-bill handling) kept as a marked
+  "superseded design" section explaining the real bug it originally fixed
+  under the old formula, plus what still applies (the balance debit
+  mechanism) and what doesn't (there's no longer an earlier subtraction
+  for it to "cancel out"); §11b and §13 updated to drop bills from
+  `totalCommittedCents`'s composition. `docs/DATA-MODEL.md` §3a's
+  bill-paid paragraph and `src/modules/bills/balance-effect.js`'s header
+  comment rewritten the same way. `docs/PRODUCT.md` §6's illustrative
+  example redrawn (bills moved off the subtracted list, shown as a
+  separate "for awareness" line) since it's directly cross-checked by
+  `tests/unit/safe-to-spend.test.js`.
+- Every test that baked the old "bills subtract immediately" behavior
+  into its expected numbers was found and rewritten, not left red:
+  `tests/unit/safe-to-spend.test.js` (bills-only, multiple-bills,
+  recurring-bills, and — since bills could no longer stand in for "a
+  commitment that subtracts" — the negative/zero/decimal-precision
+  sections were switched to use Planned Expenses instead, which still
+  subtract unconditionally, to keep exercising the same
+  negative-result/zero-result/cent-precision contract those sections are
+  actually about), `tests/unit/dashboard-integration.test.js` (the "adding
+  a bill reduces the result" test inverted to "does NOT reduce," the
+  "marking paid does NOT change Safe-to-Spend" regression test inverted to
+  its new-correct opposite — marking paid now *does* reduce it, since
+  that's the first time it counts at all), and `tests/unit/
+  qa-user-flows.test.js` (FLOW A/C/D). 446/446 pass after the rewrite.
+
+**Dashboard: the phone layout now shows Current Balance and This Period
+directly after the Safe-to-Spend hero, and a real spacing bug between
+cards is fixed — both reported directly by the user from a screenshot.**
+Root cause of both: `src/ui/screens/dashboard.js` used to build two fixed
+wrapper `<div>`s (`.dashboard-grid__main`, `.dashboard-grid__side`) — a
+"main" column (Hero, Categories, Expenses) and a "side" column (This
+Period, Current Balance, Upcoming Income, Bills, Savings, the privacy
+note) — laid out side-by-side only at desktop width (`src/styles/
+responsive.css`'s `1024px` breakpoint); below that width there was no
+grid at all, so the two divs just stacked as plain blocks in DOM order —
+main column *in full*, then side column *in full*. That buried Current
+Balance and This Period under Categories/Expenses on a phone, and
+separately, `.card:last-child { margin-bottom: 0 }` zeroed the bottom
+margin of whichever card happened to be the literal last child of the
+*main-column wrapper* (Expenses) — collapsing the gap before This Period
+to nothing, even though they're unrelated cards, purely because of which
+wrapper div Expenses happened to be inside.
+- **Fixed by flattening to one CSS Grid** with every card as a direct
+  grid item (`gridItem(slot, node)` in `dashboard.js`, tagging each with
+  `dashboard-grid__item--{slot}`), instead of two fixed wrapper divs.
+  Spacing now comes from the grid's own `gap` (`src/styles/
+  components.css`'s new base `.dashboard-grid` rule, always active, not
+  desktop-only) with `.dashboard-grid .card { margin-bottom: 0; }`
+  neutralizing the old per-card margin inside this grid specifically — so
+  the gap is uniform and can never collapse the way the old
+  `:last-child` rule could.
+- **Ordering is now explicit CSS `order` per breakpoint, not implied by
+  DOM position** — `components.css`'s base (mobile-first, always active)
+  rule sets the priority order the user asked for: hero → balance →
+  period → categories → expenses → income → bills → savings → privacy.
+  `responsive.css`'s existing `1024px` breakpoint overrides `order` (and
+  assigns `grid-column: 1` vs `2`) back to the original desktop grouping
+  — main column Hero/Categories/Expenses, side column This
+  Period/Balance/Income/Bills/Savings/Privacy — which is **unchanged from
+  before this fix**; only mobile's order actually changed, per what was
+  asked.
+- No logic touched, no new tests needed (446/446 already-passing tests
+  confirm nothing else moved) — verified instead by inspecting the actual
+  compiled `dist/index.html`'s `<style>` block (grepped for both the
+  mobile-order rules and the desktop override, confirmed both compiled
+  correctly with no minification to obscure them) and confirming all nine
+  `dashboard-grid__item--*` classes render in the bundle.
+
 **Current phase: Phase 9 — Data Backup / Import / Export**, not started.
 See `docs/ROADMAP.md` for full detail; do not jump ahead to later phases
 without the user explicitly moving the project into them.

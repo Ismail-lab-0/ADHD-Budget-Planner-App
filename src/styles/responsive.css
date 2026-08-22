@@ -23,24 +23,56 @@
     padding: var(--space-8) var(--space-4);
   }
 
-  /* The dashboard's cards sit side by side instead of one long stack — a
-     wider, full-weight "main" column (the Safe-to-Spend hero, Categories,
+  /* Two columns: a wider, full-weight "main" column (Hero, Categories,
      Expenses) and a narrower, visually quieter "side" column (This
-     period, Bills due soon, Savings, the privacy note). Mobile/tablet
-     stay a single stacked column (the default — no grid needed below
-     this width; every card already has its own spacing via .card's
-     margin-bottom). */
+     period, Current balance, Upcoming income, Bills due soon, Savings,
+     the privacy note) — unchanged from before the mobile-ordering fix
+     below; only the mechanism changed (see dashboard.js's comment).
+
+     Found and fixed a real layout bug here, reported directly by the
+     user from a screenshot: the previous version made every card a
+     direct item of one CSS Grid, pinning only its *column* explicitly
+     and leaving its *row* to auto-placement — which packs items row by
+     row across BOTH columns, so a row's height is forced to fit
+     whichever column's card lands in it is tallest. Pairing the huge
+     Hero card into the same row as the much shorter "This period" card
+     left "This period" stranded with a large empty gap below it before
+     the next row (Current balance) could start, and the same thing
+     compounded down the rest of the side column. Fixed by giving each
+     column its own independent flex stack (`.dashboard-grid__col`,
+     wrapping the main/side card slots — see dashboard.js) instead of
+     relying on shared grid row-tracks; `.dashboard-grid` itself now only
+     arranges the two column wrappers side by side. */
   .dashboard-grid {
     display: grid;
     grid-template-columns: 2fr 1fr;
     align-items: start;
+  }
+
+  .dashboard-grid__col {
+    display: flex;
+    flex-direction: column;
     gap: var(--space-5);
   }
 
-  .dashboard-grid__main,
-  .dashboard-grid__side {
-    min-width: 0; /* let cards shrink instead of overflowing the column */
+  .dashboard-grid__col--main {
+    grid-column: 1;
   }
+
+  .dashboard-grid__col--side {
+    grid-column: 2;
+  }
+
+  .dashboard-grid__item--hero { order: 1; }
+  .dashboard-grid__item--categories { order: 2; }
+  .dashboard-grid__item--expenses { order: 3; }
+
+  .dashboard-grid__item--period { order: 1; }
+  .dashboard-grid__item--balance { order: 2; }
+  .dashboard-grid__item--income { order: 3; }
+  .dashboard-grid__item--bills { order: 4; }
+  .dashboard-grid__item--savings { order: 5; }
+  .dashboard-grid__item--privacy { order: 6; }
 }
 
 /* Narrow phones: keep money-item actions from cramming onto the title's

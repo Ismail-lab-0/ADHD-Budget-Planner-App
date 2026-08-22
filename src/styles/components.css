@@ -305,6 +305,59 @@
   margin: 0;
 }
 
+/* ---- Dashboard grid ---- */
+
+/* Base (mobile-first) layout: a single column, every card an explicit
+   grid item with its own `order` so mobile can read in a different,
+   priority-driven sequence than desktop's two-column grouping — see
+   src/ui/screens/dashboard.js's comment. Desktop overrides
+   `grid-template-columns` and each item's `grid-column`/`order` in
+   src/styles/responsive.css; this base layer is what phones/tablets
+   actually use. Spacing between cards comes from `gap` here, not from
+   `.card`'s own `margin-bottom` (zeroed just below) — using the card's
+   own margin for this used to leave an inconsistent, sometimes-zero gap
+   depending on which card happened to land last inside a now-removed
+   wrapper div (reported directly by the user as "not enough space").
+   Directly after the hero: Current balance, then This period, then
+   everything else — the priority order the user asked for on a phone.
+
+   `.dashboard-grid__col` (the "main"/"side" wrapper each card slot sits
+   inside — see dashboard.js) is `display: contents` here: it removes
+   itself from layout so its children become direct flex items of
+   `.dashboard-grid` and follow the flat `order` values below. This is
+   what makes the mobile stacking order correct while still letting the
+   two columns stack independently at desktop (src/styles/responsive.css)
+   — see that file's comment for the CSS Grid bug this replaced (a shared
+   row-track height was stranding side-column cards under huge gaps,
+   reported directly by the user from a screenshot). */
+.dashboard-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.dashboard-grid__col {
+  display: contents;
+}
+
+.dashboard-grid__item {
+  min-width: 0; /* let cards shrink instead of overflowing their column */
+}
+
+.dashboard-grid .card {
+  margin-bottom: 0;
+}
+
+.dashboard-grid__item--hero { order: 1; }
+.dashboard-grid__item--balance { order: 2; }
+.dashboard-grid__item--period { order: 3; }
+.dashboard-grid__item--categories { order: 4; }
+.dashboard-grid__item--expenses { order: 5; }
+.dashboard-grid__item--income { order: 6; }
+.dashboard-grid__item--bills { order: 7; }
+.dashboard-grid__item--savings { order: 8; }
+.dashboard-grid__item--privacy { order: 9; }
+
 /* ---- Onboarding (Phase 7) ---- */
 
 /* One question centered on the screen, both axes — at the user's
