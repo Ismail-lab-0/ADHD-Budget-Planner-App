@@ -207,3 +207,30 @@ describe('the real v6 -> v7 migration (BillPayments — a real history log for "
     assert.deepEqual(migrated.incomeReceipts, v6State.incomeReceipts);
   });
 });
+
+describe('the real v7 -> v8 migration (ExpenseDrafts — Brain dump quick-capture data)', () => {
+  test('adds an empty expenseDrafts collection, purely additive', () => {
+    const v7State = {
+      schemaVersion: 7,
+      meta: { createdAt: 'x', lastOpenedAt: 'x' },
+      settings: { onboardingCompletedAt: null, displayName: 'Alex', theme: 'system', reducedMotion: false },
+      budget: { currentBalanceCents: 245000, savingsAllocationCents: 20000 },
+      incomes: [{ id: 'inc_1' }],
+      bills: [{ id: 'b_1' }],
+      plannedExpenses: [{ id: 'pe_1' }],
+      expenses: [{ id: 'e_1' }],
+      categoryBudgets: [{ id: 'cb_1' }],
+      incomeReceipts: [{ id: 'ir_1' }],
+      billPayments: [{ id: 'bp_1' }],
+    };
+
+    const migrated = migrate(v7State);
+
+    assert.equal(migrated.schemaVersion, CURRENT_SCHEMA_VERSION);
+    assert.deepEqual(migrated.expenseDrafts, []);
+    // Nothing else was touched:
+    assert.deepEqual(migrated.budget, v7State.budget);
+    assert.deepEqual(migrated.bills, v7State.bills);
+    assert.deepEqual(migrated.billPayments, v7State.billPayments);
+  });
+});

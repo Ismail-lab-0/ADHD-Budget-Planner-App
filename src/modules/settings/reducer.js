@@ -1,3 +1,5 @@
+import { SUPPORTED_CURRENCIES } from '../../core/money.js';
+
 // Settings is one of the few slices that predates any feature module
 // (docs/DATA-MODEL.md "Settings") but never had its own reducer — every
 // field was either a Phase 0 default or (displayName, for a long while)
@@ -17,6 +19,10 @@ export function settingsReducer(settings = {}, action) {
     case 'settings/set-display-name': {
       const name = typeof action.name === 'string' ? action.name.trim() : '';
       return { ...settings, displayName: name || null };
+    }
+    case 'settings/set-currency': {
+      if (!SUPPORTED_CURRENCIES.includes(action.currency)) return settings; // ignore an invalid/unsupported code rather than storing garbage
+      return { ...settings, currency: action.currency };
     }
     default:
       return settings;

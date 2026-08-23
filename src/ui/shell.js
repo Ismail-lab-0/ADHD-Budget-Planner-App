@@ -10,7 +10,12 @@
 import { el } from './dom.js';
 import { renderDashboard } from './screens/dashboard.js';
 import { renderOnboarding } from './screens/onboarding.js';
-import { hasCompletedOnboarding, getTheme } from '../modules/settings/index.js';
+import { openBrainDumpCapture } from './components/brain-dump.js';
+import { hasCompletedOnboarding, getTheme, getCurrency } from '../modules/settings/index.js';
+import { setActiveCurrency } from '../core/money.js';
+
+// Form fields the global "N" shortcut below must never hijack typing in.
+const TYPING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 
 /**
  * @param {object} options
@@ -49,6 +54,13 @@ export function mountShell({ container, store, bus, persistenceUnavailable = fal
     document.documentElement.classList.toggle('theme-dark', theme === 'dark');
     document.documentElement.classList.toggle('theme-light', theme === 'light');
 
+    // Same "set once at the top of this render pass" mechanism as theme
+    // above — every `formatCents` call made while building the tree below
+    // (onboarding or dashboard, and everything under them) picks this up
+    // implicitly, with no currency prop threaded through any of them. See
+    // src/core/money.js's `setActiveCurrency` doc comment for why.
+    setActiveCurrency(getCurrency(state));
+
     main.innerHTML = '';
 
     // A brief, skippable first-run flow takes over the whole screen (no
@@ -69,6 +81,27 @@ export function mountShell({ container, store, bus, persistenceUnavailable = fal
     // popup closed, this one line self-corrects every time.
     document.body.style.overflow = main.querySelector('.modal-backdrop') ? 'hidden' : '';
   }
+
+  // Global "N" shortcut — opens Brain Dump capture from anywhere in the
+  // app (docs/PRODUCT.md doesn't list this, but it's the same capture
+  // popup the header's persistent "+ Brain dump" button opens, not a
+  // separate affordance — see src/ui/components/brain-dump.js). Attached
+  // once here, at mount time (mountShell runs once per app lifetime, see
+  // src/main.js), not inside render() — render() reruns on every store
+  // change, so a listener added there would pile up a new one each time.
+  // Guarded against hijacking real typing (any focused form field) and
+  // against firing during onboarding, which has no header bar for the
+  // popup to visually belong to.
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'n' && event.key !== 'N') return;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const target = event.target;
+    const isTyping = target instanceof HTMLElement && (TYPING_TAGS.has(target.tagName) || target.isContentEditable);
+    if (isTyping) return;
+    if (!hasCompletedOnboarding(store.getState())) return;
+    event.preventDefault();
+    openBrainDumpCapture(render);
+  });
 
   store.subscribe(render);
   render();

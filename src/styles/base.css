@@ -99,6 +99,17 @@
   --space-6: 24px;
   --space-8: 32px;
 
+  /* `.app-main`'s left/right edge padding only (src/styles/components.css,
+     responsive.css) — was `var(--space-4)` (16px) at every breakpoint;
+     reduced by exactly 20% at the user's explicit request (16 * 0.8 =
+     12.8px). Deliberately not part of the space-1..8 scale above (that
+     scale's values are all whole multiples of 4px, and 12.8px isn't) —
+     a one-off, single-purpose token rather than bending the scale itself
+     or duplicating this literal value across three separate `.app-main`
+     rules. Vertical padding at each breakpoint is untouched, still the
+     normal --space-4/--space-6/--space-8 progression. */
+  --app-edge-padding: 12.8px;
+
   /* Radius */
   --radius-sm: 6px;
   --radius-md: 10px;

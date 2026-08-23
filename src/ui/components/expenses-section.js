@@ -56,8 +56,16 @@ function expenseTextField(labelText, { name, value, placeholder }) {
  * @param {object} options
  * @param {object} options.state used only to build the category field's
  *   suggestions (`getKnownCategories`) — this form reads no other state.
+ * @param {string|null} [options.initialDescription] prefills the
+ *   Description field (behind "+ More options") without triggering edit
+ *   mode — used by "Convert to expense" (src/ui/components/
+ *   inbox-section.js) to seed a Brain Dump note's text as the new
+ *   expense's description while keeping the create-mode "+ Add expense"
+ *   button/copy, unlike passing a partial `expense` would. Forces "+ More
+ *   options" open too, same as edit mode, so the prefilled value is
+ *   actually visible rather than hidden behind a collapsed toggle.
  */
-export function renderExpenseForm({ state, expense = null, onSubmit, onCancel }) {
+export function renderExpenseForm({ state, expense = null, initialDescription = null, onSubmit, onCancel }) {
   const isEdit = expense != null;
   const amount = amountField('Amount', { name: 'amountCents', valueCents: expense?.amountCents ?? null });
   const category = categoryField(expense?.category, getKnownCategories(state));
@@ -65,11 +73,11 @@ export function renderExpenseForm({ state, expense = null, onSubmit, onCancel })
 
   const more = renderMoreOptions(
     () => [
-      expenseTextField('Description', { name: 'description', value: expense?.description, placeholder: 'Optional' }),
+      expenseTextField('Description', { name: 'description', value: expense?.description ?? initialDescription, placeholder: 'Optional' }),
       dateField('Date', { name: 'date', value: expense?.date }),
       expenseTextField('Notes', { name: 'notes', value: expense?.notes, placeholder: 'Optional' }),
     ],
-    { startExpanded: isEdit }
+    { startExpanded: isEdit || initialDescription != null }
   );
 
   const form = el('form', { class: 'money-form' }, [

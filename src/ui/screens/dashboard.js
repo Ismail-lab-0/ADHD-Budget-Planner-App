@@ -11,14 +11,16 @@
 import { el } from '../dom.js';
 import { icon } from '../components/icons.js';
 import { renderHeaderBar } from '../components/header-bar.js';
+import { renderSummaryStrip } from '../components/summary-strip.js';
 import { renderSafeToSpendHero } from '../components/safe-to-spend-hero.js';
 import { renderSingleValueSection } from '../components/single-value-section.js';
-import { renderPeriodSummary } from '../components/period-summary.js';
+import { renderRightNowSection } from '../components/right-now-section.js';
 import { renderBillsDueSoon } from '../components/bills-due-soon.js';
 import { renderUpcomingIncome } from '../components/upcoming-income.js';
 import { renderCategoryBudgetsSection } from '../components/category-budgets-section.js';
 import { renderExpensesSection } from '../components/expenses-section.js';
-import { getDefaultPeriodValue } from '../components/period-selector.js';
+import { renderInboxSection } from '../components/inbox-section.js';
+import { getDefaultPeriodValue, getPeriodLabel } from '../components/period-selector.js';
 import { getGreetingPeriod, formatFriendlyDate } from '../../core/date.js';
 import { getSafeToSpend } from '../../modules/safe-to-spend/index.js';
 import { getPeriodSummary } from '../../modules/dashboard/index.js';
@@ -69,15 +71,24 @@ export function renderDashboard({ state, dispatch, now = new Date(), requestRend
   // Each card is tagged with its own `dashboard-grid__item--*` class so
   // CSS can order it independently per breakpoint (src/styles/
   // components.css / responsive.css). Cards are grouped into two
-  // `.dashboard-grid__col` wrapper divs — "main" (hero, categories,
-  // expenses) and "side" (this period, current balance, upcoming income,
-  // bills due soon, savings, the privacy note) — but that grouping only
-  // matters at desktop width. On mobile, `.dashboard-grid__col` is
-  // `display: contents` (removes its own box, promoting its children to
-  // direct flex items of `.dashboard-grid`), so every card still follows
-  // one flat `order` sequence there: hero -> balance -> this period ->
-  // categories -> expenses -> upcoming income -> bills -> savings ->
-  // privacy, the priority order asked for on a phone.
+  // `.dashboard-grid__col` wrapper divs — "main" (hero, inbox, categories,
+  // expenses) and "side" (the period card, Current balance, Upcoming
+  // Income, Bills Due Soon, Savings, the privacy note) — but that
+  // grouping only matters at desktop width. On mobile,
+  // `.dashboard-grid__col` is `display: contents` (removes its own box,
+  // promoting its children to direct flex items of `.dashboard-grid`),
+  // so every card still follows one flat `order` sequence there: hero ->
+  // inbox -> right-now -> balance -> categories -> expenses -> income ->
+  // bills -> savings -> privacy. Inbox sits right after the hero (moved
+  // from last in the main column) at the user's explicit request —
+  // quick-capture is a frequently-used feature and previously required
+  // scrolling past Categories/Expenses to reach.
+  //
+  // The period card and Current Balance briefly lived merged into one
+  // "Right now" card (Current balance + Money in + Money out), then the
+  // user asked to split Current Balance back out into its own card,
+  // directly below the period card — see right-now-section.js's own
+  // header comment for that whole lineage.
   //
   // The two-wrapper-div split was tried once before and reverted in
   // favor of one flat grid, because that version hard-coded DOM order as
@@ -103,12 +114,21 @@ export function renderDashboard({ state, dispatch, now = new Date(), requestRend
 
   const mainColumn = el('div', { class: 'dashboard-grid__col dashboard-grid__col--main' }, [
     gridItem('hero', renderSafeToSpendHero(result, { state, dispatch, requestRender })),
+    // Directly below the hero — Brain Dump quick-capture's Inbox
+    // (src/ui/components/inbox-section.js) — moved up from below Expenses
+    // so it no longer requires scrolling past Categories/Expenses to reach.
+    gridItem('inbox', renderInboxSection({ state, dispatch, now, requestRender })),
     gridItem('categories', renderCategoryBudgetsSection({ state, dispatch, now, requestRender })),
     gridItem('expenses', renderExpensesSection({ state, dispatch, requestRender, period: selectedPeriod })),
   ]);
 
+  // Period card (Money in/out, titled with the selected period — see
+  // right-now-section.js) -> Current balance (its own card again, right
+  // below the period card, at the user's explicit request to split it
+  // back out of that card) -> Upcoming Income -> Bills Due Soon ->
+  // Savings -> privacy, each full width and stacked.
   const sideColumn = el('div', { class: 'dashboard-grid__col dashboard-grid__col--side' }, [
-    gridItem('period', renderPeriodSummary(periodSummary)),
+    gridItem('right-now', renderRightNowSection({ periodSummary, periodLabel: getPeriodLabel(selectedPeriod) })),
     gridItem(
       'balance',
       renderSingleValueSection({
@@ -119,6 +139,9 @@ export function renderDashboard({ state, dispatch, now = new Date(), requestRend
         onSave: (cents) => dispatch(setCurrentBalanceAction(cents)),
         allowNegative: true,
         icon: 'wallet',
+        // No inline field/Save button — just "Currently: $X" and a pencil
+        // that opens a small popup to change it, at the user's request.
+        editOnly: true,
         requestRender,
       })
     ),
@@ -147,6 +170,13 @@ export function renderDashboard({ state, dispatch, now = new Date(), requestRend
       el('h1', { class: 'today-header__greeting' }, greetingText(state, now)),
       el('p', { class: 'today-header__date' }, formatFriendlyDate(now)),
     ]),
+    // Above the hero — a compact, scannable-in-2-seconds strip of stat
+    // tiles (src/ui/components/summary-strip.js): Total expenses, Total
+    // bills, Bills due, Inbox items. No longer reads `result`
+    // (getSafeToSpend's output) at all — Safe to Spend and Days left,
+    // the two tiles that used it, were both replaced at the user's
+    // request; see summary-strip.js's own header comment.
+    renderSummaryStrip({ state }),
     el('div', { class: 'dashboard-grid' }, [mainColumn, sideColumn]),
   ]);
 }

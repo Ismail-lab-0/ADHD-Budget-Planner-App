@@ -5,7 +5,7 @@
 // The empty state below is the budget-product shape (docs/PRODUCT.md) —
 // every collection empty, settings/budget at their defaults.
 
-export const CURRENT_SCHEMA_VERSION = 7;
+export const CURRENT_SCHEMA_VERSION = 8;
 
 /** @returns the state tree for a brand-new install, at the current schema version. */
 export function createEmptyState() {
@@ -21,6 +21,7 @@ export function createEmptyState() {
       displayName: null,
       theme: 'system',
       reducedMotion: false,
+      currency: 'USD',
     },
     budget: {
       currentBalanceCents: 0,
@@ -33,6 +34,7 @@ export function createEmptyState() {
     categoryBudgets: [],
     incomeReceipts: [],
     billPayments: [],
+    expenseDrafts: [],
   };
 }
 
@@ -132,6 +134,13 @@ function migrateV6ToV7(state) {
   return { ...state, billPayments: state.billPayments ?? [] };
 }
 
+// v7 -> v8: adds the `expenseDrafts` collection — the data behind "Brain
+// dump" quick capture (docs/DATA-MODEL.md "ExpenseDraft"). Purely
+// additive; nothing else changes shape.
+function migrateV7ToV8(state) {
+  return { ...state, expenseDrafts: state.expenseDrafts ?? [] };
+}
+
 const migrations = {
   2: (state) => ({ ...state, tasks: (state.tasks ?? []).map(migrateTaskV1ToV2) }),
   3: migrateV2ToV3,
@@ -139,6 +148,7 @@ const migrations = {
   5: migrateV4ToV5,
   6: migrateV5ToV6,
   7: migrateV6ToV7,
+  8: migrateV7ToV8,
 };
 
 /**
@@ -184,7 +194,7 @@ export function migrate(state, options = {}) {
 // calculation can trust these are always real arrays, even if the raw
 // stored value degraded into something else (an object, a string, `null`)
 // through hand-editing or a future bug. See Phase 8 QA (docs/QA-REPORT.md).
-const ARRAY_COLLECTION_KEYS = ['incomes', 'bills', 'plannedExpenses', 'expenses', 'categoryBudgets', 'incomeReceipts', 'billPayments'];
+const ARRAY_COLLECTION_KEYS = ['incomes', 'bills', 'plannedExpenses', 'expenses', 'categoryBudgets', 'incomeReceipts', 'billPayments', 'expenseDrafts'];
 
 function normalizeCollections(state) {
   const normalized = { ...state };

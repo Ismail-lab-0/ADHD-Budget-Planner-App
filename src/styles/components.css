@@ -15,7 +15,9 @@
 }
 
 .app-main {
-  padding: var(--space-4);
+  /* Left/right at --app-edge-padding (space-4 reduced 20%, see base.css),
+     top/bottom still the normal --space-4 — a horizontal-only reduction. */
+  padding: var(--space-4) var(--app-edge-padding);
 }
 
 /* ---- Cards ---- */
@@ -349,14 +351,15 @@
 }
 
 .dashboard-grid__item--hero { order: 1; }
-.dashboard-grid__item--balance { order: 2; }
-.dashboard-grid__item--period { order: 3; }
-.dashboard-grid__item--categories { order: 4; }
-.dashboard-grid__item--expenses { order: 5; }
-.dashboard-grid__item--income { order: 6; }
-.dashboard-grid__item--bills { order: 7; }
-.dashboard-grid__item--savings { order: 8; }
-.dashboard-grid__item--privacy { order: 9; }
+.dashboard-grid__item--inbox { order: 2; }
+.dashboard-grid__item--right-now { order: 3; }
+.dashboard-grid__item--balance { order: 4; }
+.dashboard-grid__item--categories { order: 5; }
+.dashboard-grid__item--expenses { order: 6; }
+.dashboard-grid__item--income { order: 7; }
+.dashboard-grid__item--bills { order: 8; }
+.dashboard-grid__item--savings { order: 9; }
+.dashboard-grid__item--privacy { order: 10; }
 
 /* ---- Onboarding (Phase 7) ---- */
 
@@ -584,6 +587,56 @@
   margin-bottom: var(--space-3);
 }
 
+/* ---- Summary strip (src/ui/components/summary-strip.js) — a compact,
+   scannable-in-2-seconds row of stat tiles above the hero. Deliberately
+   lighter than `.card`: no shadow, tighter padding, smaller value text
+   than even `.card--quiet` below — a glance strip, not another card
+   competing with the hero right underneath it. `auto-fit`/`minmax` wraps
+   to 2-across (then 1-across) on narrower viewports with no separate
+   breakpoint needed, the same responsive technique used nowhere else in
+   this codebase yet but appropriate here since these tiles have no
+   internal content that would break at a narrow width the way a form or
+   a list row could. ---- */
+
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.summary-tile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.summary-tile__text {
+  display: flex;
+  flex-direction: column-reverse; /* value first in the DOM (see summary-strip.js) for a sensible reading order with CSS off; visually value-on-top either way */
+  gap: 2px;
+  min-width: 0;
+}
+
+.summary-tile__label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary-tile__value {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
 /* ---- Safe-to-Spend hero (Phase 4 — the dashboard's primary element) ---- */
 
 .hero {
@@ -679,32 +732,43 @@
   margin: 0;
 }
 
-/* ---- This period summary ---- */
+/* ---- "Right now" (src/ui/components/right-now-section.js) — a merged
+   snapshot card: Current balance, Money in, Money out, one row each.
+   Formerly two separate cards ("This Period" + "Current Balance", hence
+   the class names below carrying over unchanged from the old
+   "period-summary" naming this replaced — the row shape itself didn't
+   change, only which card it lives in and which figures fill it), merged
+   at the user's request to fix inconsistent card grouping in the right
+   column. `__text` takes the remaining row width (`flex: 1`) so an
+   optional trailing element (the Current Balance row's edit-pencil
+   icon-button) sits flush right instead of hugging the label/value. ---- */
 
-.period-summary {
+.right-now {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
 
-.period-summary__row {
+.right-now__row {
   display: flex;
   align-items: center;
   gap: var(--space-3);
 }
 
-.period-summary__text {
+.right-now__text {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
 
-.period-summary__label {
+.right-now__label {
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
 }
 
-.period-summary__value {
+.right-now__value {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -902,18 +966,104 @@
   min-height: var(--tap-target-min);
 }
 
+/* ---- Currency selector (header bar's right-side controls group,
+   alongside the period selector and theme toggle — src/ui/components/
+   currency-selector.js) — display preference only, see that file's own
+   comment. Same anchored scrim+panel structure as the period selector
+   just above, including anchoring the panel to the toggle's *right* edge
+   (`right: 0`) — this toggle now lives near the right end of the header
+   bar too, so a right-anchored panel overflows safely inward the same
+   way period-selector's does. The toggle itself is a plain `.icon-btn`
+   (not `.btn`) showing the currency's bare symbol as text, matching the
+   square icon-button footprint of its neighbors instead of the wider
+   text-button shape it briefly had. ---- */
+
+.currency-selector {
+  position: relative;
+  display: inline-flex;
+}
+
+.currency-selector__toggle {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.currency-selector__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: transparent;
+}
+
+.currency-selector__panel {
+  position: absolute;
+  top: 52px;
+  right: 0;
+  z-index: 91;
+  width: min(260px, calc(100vw - var(--space-8)));
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-3);
+}
+
+.currency-selector__options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.currency-selector__option {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  min-height: var(--tap-target-min);
+  font-size: var(--font-size-sm);
+}
+
+.currency-selector__option:hover {
+  background: var(--color-accent-muted);
+}
+
+.currency-selector__option--active {
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
 /* ---- Card hierarchy: a quieter treatment for secondary/at-a-glance
-   cards (the side column), vs. the full-weight .card used by the hero and
-   Categories — smaller heading, lighter border/shadow, so the page has a
-   visible primary/secondary distinction instead of every card competing
-   at the same visual weight. ---- */
+   cards (the side column: This period, Current balance, Upcoming income,
+   Bills due soon, Savings), vs. the full-weight .card used by the hero
+   and the main column (Categories/Expenses/Inbox) — smaller heading,
+   lighter border/shadow/padding, so the page has a visible
+   primary/secondary distinction instead of every card competing at the
+   same visual weight. Current Balance and Savings (src/ui/components/
+   single-value-section.js) gained this class at the user's explicit
+   request — they used to render as full-weight `.card`, the same visual
+   weight as Categories/Expenses, despite being "at a glance" figures like
+   their side-column neighbors. ---- */
 
 .card--quiet {
   box-shadow: none;
   border-color: var(--color-border);
+  padding: var(--space-4);
 }
 
 .card--quiet .section-heading h2 {
+  font-size: var(--font-size-base);
+}
+
+/* A secondary card's own headline figure (e.g. "Currently: $X") reads
+   smaller than the hero's, and smaller than a full-weight card's own
+   body text emphasis would — this is the one place that number appears,
+   so it still needs to be findable, just not shouting the way the hero's
+   does. */
+.card--quiet .single-value-form__current {
   font-size: var(--font-size-base);
 }
 

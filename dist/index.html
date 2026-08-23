@@ -107,6 +107,17 @@
   --space-6: 24px;
   --space-8: 32px;
 
+  /* `.app-main`'s left/right edge padding only (src/styles/components.css,
+     responsive.css) — was `var(--space-4)` (16px) at every breakpoint;
+     reduced by exactly 20% at the user's explicit request (16 * 0.8 =
+     12.8px). Deliberately not part of the space-1..8 scale above (that
+     scale's values are all whole multiples of 4px, and 12.8px isn't) —
+     a one-off, single-purpose token rather than bending the scale itself
+     or duplicating this literal value across three separate `.app-main`
+     rules. Vertical padding at each breakpoint is untouched, still the
+     normal --space-4/--space-6/--space-8 progression. */
+  --app-edge-padding: 12.8px;
+
   /* Radius */
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -328,7 +339,9 @@ ul {
 }
 
 .app-main {
-  padding: var(--space-4);
+  /* Left/right at --app-edge-padding (space-4 reduced 20%, see base.css),
+     top/bottom still the normal --space-4 — a horizontal-only reduction. */
+  padding: var(--space-4) var(--app-edge-padding);
 }
 
 /* ---- Cards ---- */
@@ -662,14 +675,15 @@ ul {
 }
 
 .dashboard-grid__item--hero { order: 1; }
-.dashboard-grid__item--balance { order: 2; }
-.dashboard-grid__item--period { order: 3; }
-.dashboard-grid__item--categories { order: 4; }
-.dashboard-grid__item--expenses { order: 5; }
-.dashboard-grid__item--income { order: 6; }
-.dashboard-grid__item--bills { order: 7; }
-.dashboard-grid__item--savings { order: 8; }
-.dashboard-grid__item--privacy { order: 9; }
+.dashboard-grid__item--inbox { order: 2; }
+.dashboard-grid__item--right-now { order: 3; }
+.dashboard-grid__item--balance { order: 4; }
+.dashboard-grid__item--categories { order: 5; }
+.dashboard-grid__item--expenses { order: 6; }
+.dashboard-grid__item--income { order: 7; }
+.dashboard-grid__item--bills { order: 8; }
+.dashboard-grid__item--savings { order: 9; }
+.dashboard-grid__item--privacy { order: 10; }
 
 /* ---- Onboarding (Phase 7) ---- */
 
@@ -897,6 +911,56 @@ ul {
   margin-bottom: var(--space-3);
 }
 
+/* ---- Summary strip (src/ui/components/summary-strip.js) — a compact,
+   scannable-in-2-seconds row of stat tiles above the hero. Deliberately
+   lighter than `.card`: no shadow, tighter padding, smaller value text
+   than even `.card--quiet` below — a glance strip, not another card
+   competing with the hero right underneath it. `auto-fit`/`minmax` wraps
+   to 2-across (then 1-across) on narrower viewports with no separate
+   breakpoint needed, the same responsive technique used nowhere else in
+   this codebase yet but appropriate here since these tiles have no
+   internal content that would break at a narrow width the way a form or
+   a list row could. ---- */
+
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.summary-tile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.summary-tile__text {
+  display: flex;
+  flex-direction: column-reverse; /* value first in the DOM (see summary-strip.js) for a sensible reading order with CSS off; visually value-on-top either way */
+  gap: 2px;
+  min-width: 0;
+}
+
+.summary-tile__label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary-tile__value {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
 /* ---- Safe-to-Spend hero (Phase 4 — the dashboard's primary element) ---- */
 
 .hero {
@@ -992,32 +1056,43 @@ ul {
   margin: 0;
 }
 
-/* ---- This period summary ---- */
+/* ---- "Right now" (src/ui/components/right-now-section.js) — a merged
+   snapshot card: Current balance, Money in, Money out, one row each.
+   Formerly two separate cards ("This Period" + "Current Balance", hence
+   the class names below carrying over unchanged from the old
+   "period-summary" naming this replaced — the row shape itself didn't
+   change, only which card it lives in and which figures fill it), merged
+   at the user's request to fix inconsistent card grouping in the right
+   column. `__text` takes the remaining row width (`flex: 1`) so an
+   optional trailing element (the Current Balance row's edit-pencil
+   icon-button) sits flush right instead of hugging the label/value. ---- */
 
-.period-summary {
+.right-now {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
 
-.period-summary__row {
+.right-now__row {
   display: flex;
   align-items: center;
   gap: var(--space-3);
 }
 
-.period-summary__text {
+.right-now__text {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
 
-.period-summary__label {
+.right-now__label {
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
 }
 
-.period-summary__value {
+.right-now__value {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -1215,18 +1290,104 @@ ul {
   min-height: var(--tap-target-min);
 }
 
+/* ---- Currency selector (header bar's right-side controls group,
+   alongside the period selector and theme toggle — src/ui/components/
+   currency-selector.js) — display preference only, see that file's own
+   comment. Same anchored scrim+panel structure as the period selector
+   just above, including anchoring the panel to the toggle's *right* edge
+   (`right: 0`) — this toggle now lives near the right end of the header
+   bar too, so a right-anchored panel overflows safely inward the same
+   way period-selector's does. The toggle itself is a plain `.icon-btn`
+   (not `.btn`) showing the currency's bare symbol as text, matching the
+   square icon-button footprint of its neighbors instead of the wider
+   text-button shape it briefly had. ---- */
+
+.currency-selector {
+  position: relative;
+  display: inline-flex;
+}
+
+.currency-selector__toggle {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.currency-selector__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: transparent;
+}
+
+.currency-selector__panel {
+  position: absolute;
+  top: 52px;
+  right: 0;
+  z-index: 91;
+  width: min(260px, calc(100vw - var(--space-8)));
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-3);
+}
+
+.currency-selector__options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.currency-selector__option {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  min-height: var(--tap-target-min);
+  font-size: var(--font-size-sm);
+}
+
+.currency-selector__option:hover {
+  background: var(--color-accent-muted);
+}
+
+.currency-selector__option--active {
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
 /* ---- Card hierarchy: a quieter treatment for secondary/at-a-glance
-   cards (the side column), vs. the full-weight .card used by the hero and
-   Categories — smaller heading, lighter border/shadow, so the page has a
-   visible primary/secondary distinction instead of every card competing
-   at the same visual weight. ---- */
+   cards (the side column: This period, Current balance, Upcoming income,
+   Bills due soon, Savings), vs. the full-weight .card used by the hero
+   and the main column (Categories/Expenses/Inbox) — smaller heading,
+   lighter border/shadow/padding, so the page has a visible
+   primary/secondary distinction instead of every card competing at the
+   same visual weight. Current Balance and Savings (src/ui/components/
+   single-value-section.js) gained this class at the user's explicit
+   request — they used to render as full-weight `.card`, the same visual
+   weight as Categories/Expenses, despite being "at a glance" figures like
+   their side-column neighbors. ---- */
 
 .card--quiet {
   box-shadow: none;
   border-color: var(--color-border);
+  padding: var(--space-4);
 }
 
 .card--quiet .section-heading h2 {
+  font-size: var(--font-size-base);
+}
+
+/* A secondary card's own headline figure (e.g. "Currently: $X") reads
+   smaller than the hero's, and smaller than a full-weight card's own
+   body text emphasis would — this is the one place that number appears,
+   so it still needs to be findable, just not shouting the way the hero's
+   does. */
+.card--quiet .single-value-form__current {
   font-size: var(--font-size-base);
 }
 
@@ -1389,7 +1550,7 @@ ul {
   .app-main {
     max-width: 640px;
     margin: 0 auto;
-    padding: var(--space-6) var(--space-4);
+    padding: var(--space-6) var(--app-edge-padding);
   }
 }
 
@@ -1398,14 +1559,14 @@ ul {
 @media (min-width: 1024px) {
   .app-main {
     max-width: 1040px;
-    padding: var(--space-8) var(--space-4);
+    padding: var(--space-8) var(--app-edge-padding);
   }
 
-  /* Two columns: a wider, full-weight "main" column (Hero, Categories,
-     Expenses) and a narrower, visually quieter "side" column (This
-     period, Current balance, Upcoming income, Bills due soon, Savings,
-     the privacy note) — unchanged from before the mobile-ordering fix
-     below; only the mechanism changed (see dashboard.js's comment).
+  /* Two columns: a wider, full-weight "main" column (Hero, Inbox,
+     Categories, Expenses) and a narrower, visually quieter "side" column
+     (the period card, Current balance, Bills due soon, Upcoming income,
+     Savings, the privacy note) — unchanged from before the mobile-ordering
+     fix below; only the mechanism changed (see dashboard.js's comment).
 
      Found and fixed a real layout bug here, reported directly by the
      user from a screenshot: the previous version made every card a
@@ -1442,16 +1603,33 @@ ul {
   }
 
   .dashboard-grid__item--hero { order: 1; }
-  .dashboard-grid__item--categories { order: 2; }
-  .dashboard-grid__item--expenses { order: 3; }
+  .dashboard-grid__item--inbox { order: 2; }
+  .dashboard-grid__item--categories { order: 3; }
+  .dashboard-grid__item--expenses { order: 4; }
 
-  .dashboard-grid__item--period { order: 1; }
+  .dashboard-grid__item--right-now { order: 1; }
   .dashboard-grid__item--balance { order: 2; }
   .dashboard-grid__item--income { order: 3; }
   .dashboard-grid__item--bills { order: 4; }
   .dashboard-grid__item--savings { order: 5; }
   .dashboard-grid__item--privacy { order: 6; }
 }
+
+/* A wide-desktop breakpoint used to live here: a `1fr 1fr` sub-grid on
+   `.dashboard-grid__col--side` so Bills Due Soon and Upcoming Income
+   (then a side-by-side pair) could flow 2-per-row, shrinking the side
+   column's total height to help balance it against the main column (see
+   CLAUDE.md "Current status" for that whole episode). Removed here, not
+   just left inert: the user later asked for
+   Bills Due Soon to move directly under Upcoming Income instead of
+   beside it, which means nothing in the side column pairs up anymore —
+   every card there is single-column/full-width now, same as the base
+   1024px breakpoint just above. A `1fr 1fr` grid with nothing left to
+   place two-per-row would have produced zero visual difference from a
+   plain stack while still carrying all that explanatory weight and
+   `app-main`'s extra width, so it was deleted rather than kept around as
+   dead, confusing complexity — the side column is simply the same
+   single-column flex stack at every desktop width now. */
 
 /* Narrow phones: keep money-item actions from cramming onto the title's
    row (Phase 2 §12 — "cards do not become cramped"). */
@@ -1596,7 +1774,7 @@ function createEventBus() {
 // The empty state below is the budget-product shape (docs/PRODUCT.md) —
 // every collection empty, settings/budget at their defaults.
 
-const CURRENT_SCHEMA_VERSION = 7;
+const CURRENT_SCHEMA_VERSION = 8;
 
 /** @returns the state tree for a brand-new install, at the current schema version. */
 function createEmptyState() {
@@ -1612,6 +1790,7 @@ function createEmptyState() {
       displayName: null,
       theme: 'system',
       reducedMotion: false,
+      currency: 'USD',
     },
     budget: {
       currentBalanceCents: 0,
@@ -1624,6 +1803,7 @@ function createEmptyState() {
     categoryBudgets: [],
     incomeReceipts: [],
     billPayments: [],
+    expenseDrafts: [],
   };
 }
 
@@ -1723,6 +1903,13 @@ function migrateV6ToV7(state) {
   return { ...state, billPayments: state.billPayments ?? [] };
 }
 
+// v7 -> v8: adds the `expenseDrafts` collection — the data behind "Brain
+// dump" quick capture (docs/DATA-MODEL.md "ExpenseDraft"). Purely
+// additive; nothing else changes shape.
+function migrateV7ToV8(state) {
+  return { ...state, expenseDrafts: state.expenseDrafts ?? [] };
+}
+
 const migrations = {
   2: (state) => ({ ...state, tasks: (state.tasks ?? []).map(migrateTaskV1ToV2) }),
   3: migrateV2ToV3,
@@ -1730,6 +1917,7 @@ const migrations = {
   5: migrateV4ToV5,
   6: migrateV5ToV6,
   7: migrateV6ToV7,
+  8: migrateV7ToV8,
 };
 
 /**
@@ -1775,7 +1963,7 @@ function migrate(state, options = {}) {
 // calculation can trust these are always real arrays, even if the raw
 // stored value degraded into something else (an object, a string, `null`)
 // through hand-editing or a future bug. See Phase 8 QA (docs/QA-REPORT.md).
-const ARRAY_COLLECTION_KEYS = ['incomes', 'bills', 'plannedExpenses', 'expenses', 'categoryBudgets', 'incomeReceipts', 'billPayments'];
+const ARRAY_COLLECTION_KEYS = ['incomes', 'bills', 'plannedExpenses', 'expenses', 'categoryBudgets', 'incomeReceipts', 'billPayments', 'expenseDrafts'];
 
 function normalizeCollections(state) {
   const normalized = { ...state };
@@ -2191,6 +2379,20 @@ function categoryEmojiBadge(category) {
 const GLOBAL_PERIODS = ['week', 'month', 'lastMonth', 'all', 'custom'];
 const PERIOD_LABEL = { week: 'This week', month: 'This month', lastMonth: 'Last month', all: 'All time', custom: 'Custom range' };
 
+/**
+ * The human label for a selected period value — the same text this
+ * component already shows in its own toggle button/dropdown, exported so
+ * other cards that read the header bar's global period filter (e.g. the
+ * "Right now" card, src/ui/components/right-now-section.js) can title
+ * themselves with it instead of a static label, without duplicating this
+ * mapping.
+ * @param {{period: string, from: string|null, to: string|null}} value
+ * @returns {string}
+ */
+function getPeriodLabel(value) {
+  return PERIOD_LABEL[value?.period] ?? 'This month';
+}
+
 // Whether the dropdown panel is open — transient UI state, deliberately
 // outside the store (see docs/ARCHITECTURE.md §4), same convention as
 // every other popup/toggle in this app.
@@ -2203,7 +2405,7 @@ let panelOpen = false;
  * @param {() => void} [options.requestRender]
  */
 function renderPeriodSelector({ value, onChange, requestRender }) {
-  const toggle = iconButton('calendar', `Filter by period: ${PERIOD_LABEL[value.period] ?? 'This month'}`, () => {
+  const toggle = iconButton('calendar', `Filter by period: ${getPeriodLabel(value)}`, () => {
     panelOpen = !panelOpen;
     requestRender?.();
   });
@@ -2309,135 +2511,18 @@ function setDisplayNameAction(name) {
   return { type: 'settings/set-display-name', name };
 }
 
-
-// ---- src/modules/settings/selectors.js ----
-function getOnboardingCompletedAt(state) {
-  return state.settings?.onboardingCompletedAt ?? null;
-}
-
-function hasCompletedOnboarding(state) {
-  return getOnboardingCompletedAt(state) != null;
-}
-
-/** @returns {'light'|'dark'|'system'} the stored theme preference — 'system' means "follow the OS," the field's own default. */
-function getTheme(state) {
-  const theme = state.settings?.theme;
-  return theme === 'light' || theme === 'dark' ? theme : 'system';
-}
-
-/** @returns {string|null} the display name used for greeting copy, or null if never set. */
-function getDisplayName(state) {
-  return state.settings?.displayName ?? null;
-}
-
-
-// ---- src/modules/settings/reducer.js ----
-// Settings is one of the few slices that predates any feature module
-// (docs/DATA-MODEL.md "Settings") but never had its own reducer — every
-// field was either a Phase 0 default or (displayName, for a long while)
-// never actually set anywhere. Phase 7's onboarding flow is what first
-// needed to mutate it; onboarding's "Your name" step is what finally set
-// displayName for the first time, later still.
-function settingsReducer(settings = {}, action) {
-  switch (action.type) {
-    case 'settings/complete-onboarding': {
-      if (settings.onboardingCompletedAt) return settings; // already completed — no-op
-      return { ...settings, onboardingCompletedAt: action.now };
-    }
-    case 'settings/set-theme': {
-      if (!['light', 'dark', 'system'].includes(action.theme)) return settings; // ignore an invalid value rather than storing garbage
-      return { ...settings, theme: action.theme };
-    }
-    case 'settings/set-display-name': {
-      const name = typeof action.name === 'string' ? action.name.trim() : '';
-      return { ...settings, displayName: name || null };
-    }
-    default:
-      return settings;
-  }
-}
-
-
-// ---- src/modules/settings/index.js ----
-// The Settings module's public interface. See docs/ARCHITECTURE.md §7.
-
-
-
-// ---- src/ui/components/theme-toggle.js ----
-// A small icon button in the header bar for an explicit Light/Dark
-// preference — wires up the `settings.theme` field (src/modules/settings/)
-// that already existed but was never read/written by anything before this
-// (see CLAUDE.md "Current status"). No stored preference ('system', the
-// default) means "keep following the OS," exactly as before this existed.
-
-
 /**
- * The theme actually in effect right now — the explicit `settings.theme`
- * choice if there is one, otherwise the OS's own `prefers-color-scheme`.
- * @param {object} state
- * @returns {'light'|'dark'}
+ * Sets the display currency — a formatting preference only (see
+ * src/core/money.js `formatCents`/`SUPPORTED_CURRENCIES`), not a
+ * conversion: every amount is still one stored number, always in cents,
+ * unchanged by this — only the symbol/format used to *display* it
+ * changes, everywhere `formatCents` is called. No exchange rates, no
+ * per-entry currency; this app deliberately stays single-currency in the
+ * data it stores.
+ * @param {string} currency an ISO 4217 code from `SUPPORTED_CURRENCIES`
  */
-function getEffectiveTheme(state) {
-  const stored = getTheme(state);
-  if (stored === 'light' || stored === 'dark') return stored;
-  return typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
-
-/**
- * @param {object} options
- * @param {object} options.state
- * @param {Function} options.dispatch
- */
-function renderThemeToggle({ state, dispatch }) {
-  const effective = getEffectiveTheme(state);
-  // The icon shown is the mode a click switches *to* — a moon while
-  // currently light (tap for dark), a sun while currently dark (tap for
-  // light) — the common convention for this control.
-  const nextTheme = effective === 'dark' ? 'light' : 'dark';
-  const icon = effective === 'dark' ? 'sun' : 'moon';
-  const label = effective === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
-
-  return iconButton(icon, label, () => dispatch(setThemeAction(nextTheme)), { tone: 'neutral' });
-}
-
-
-// ---- src/ui/components/header-bar.js ----
-// The dashboard's header bar: a small brand mark on the left, the global
-// period selector + theme toggle on the right. Deliberately not a
-// multi-module nav rail — this stays the single-screen Money app it
-// already is (see CLAUDE.md "Current status" for why that was a
-// considered-and-declined option, not an oversight).
-
-
-/**
- * @param {object} options
- * @param {object} options.state
- * @param {Function} options.dispatch
- * @param {{period: string, from: string|null, to: string|null}} options.period
- * @param {(next: {period: string, from: string|null, to: string|null}) => void} options.onPeriodChange
- * @param {() => void} [options.requestRender]
- */
-function renderHeaderBar({ state, dispatch, period, onPeriodChange, requestRender }) {
-  const brand = el('div', { class: 'header-bar__brand' }, [iconChip('wallet', { small: true }), el('span', { class: 'header-bar__brand-name' }, 'Money')]);
-
-  const controls = el('div', { class: 'header-bar__controls' }, [
-    renderPeriodSelector({ value: period, onChange: onPeriodChange, requestRender }),
-    renderThemeToggle({ state, dispatch }),
-  ]);
-
-  return el('header', { class: 'header-bar' }, [brand, controls]);
-}
-
-
-// ---- src/ui/components/empty-state.js ----
-// A small, reusable empty-state message. See CLAUDE.md's product
-// discipline notes — an empty state should say plainly what's true
-// ("Nothing planned yet.") rather than leave a blank gap or overstate.
-
-
-/** @param {string} message @returns {HTMLElement} */
-function emptyState(message) {
-  return el('p', { class: 'empty-state' }, message);
+function setCurrencyAction(currency) {
+  return { type: 'settings/set-currency', currency };
 }
 
 
@@ -2533,14 +2618,100 @@ function isValidBalanceCents(value) {
   return Number.isInteger(value);
 }
 
-/** @param {number} cents @returns {string} e.g. "$2,450.00" */
+// ISO 4217 codes offered by the currency picker (src/ui/components/
+// currency-selector.js) — a deliberately short, common list, not
+// exhaustive; adding another is a one-line change here. This is purely a
+// *display* preference (docs/DATA-MODEL.md "Settings" — `settings.currency`)
+// — every stored amount stays exactly what it always was, one plain
+// integer-cents number, with no conversion, no exchange rates, and no
+// per-entry currency. Switching currencies only changes the symbol/
+// punctuation `formatCents` renders the same number with (see
+// `setActiveCurrency` below) — $2,450.00 and €2,450.00 represent the
+// identical stored value, deliberately not two different amounts.
+const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD'];
+const DEFAULT_CURRENCY = 'USD';
+
+// The currency `formatCents` renders amounts in — set once per render
+// from the stored `settings.currency` (src/ui/shell.js's `render()`),
+// mirroring exactly how the stored theme preference is applied to
+// `<html>` once per render rather than threaded as a prop through every
+// component that needs it (see base.css's own theme comment). A
+// deliberate, narrow exception to this module's otherwise pure-function
+// design: `formatCents` is called from roughly a dozen UI files, several
+// through nested row-building helpers that don't currently receive
+// `state` at all — threading a currency argument through every one of
+// them would be a much larger, riskier change for a display-only
+// preference than reusing the "set once at the top of a render pass, read
+// implicitly for its duration" pattern this app already relies on for
+// theme. Safe because every render is fully synchronous, top-to-bottom
+// DOM construction (docs/ARCHITECTURE.md) — there is no interleaving that
+// could let one render's `formatCents` calls see a different render's
+// active currency.
+let activeCurrency = DEFAULT_CURRENCY;
+
+/**
+ * @param {string} currency an ISO 4217 code, ideally from
+ *   `SUPPORTED_CURRENCIES` — anything else (a corrupted stored value, an
+ *   unrecognized code) falls back to the default rather than risking a
+ *   thrown `Intl.NumberFormat` call blanking the whole dashboard.
+ */
+function setActiveCurrency(currency) {
+  activeCurrency = SUPPORTED_CURRENCIES.includes(currency) ? currency : DEFAULT_CURRENCY;
+}
+
+/** @returns {string} the currency `formatCents` is currently rendering amounts in. */
+function getActiveCurrency() {
+  return activeCurrency;
+}
+
+/**
+ * The bare symbol for a currency code (e.g. "$", "€", "£", "¥") — used by
+ * the currency picker's icon button (src/ui/components/
+ * currency-selector.js), which shows the sign itself rather than the
+ * 3-letter code. Derived from `Intl.NumberFormat` (`narrowSymbol` —
+ * plain "$" rather than e.g. "CA$" for CAD, which `Intl`'s default
+ * `symbol` style would disambiguate with) instead of a second hardcoded
+ * currency->symbol map, so this and `formatCents` can never disagree
+ * about what a given code renders as.
+ * @param {string} currency an ISO 4217 code, ideally from
+ *   `SUPPORTED_CURRENCIES` — falls back to the default currency's symbol
+ *   for anything else, same "never throw" contract as `formatCents`.
+ * @returns {string}
+ */
+function getCurrencySymbol(currency) {
+  const code = SUPPORTED_CURRENCIES.includes(currency) ? currency : DEFAULT_CURRENCY;
+  try {
+    const part = new Intl.NumberFormat('en-US', { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol' })
+      .formatToParts(0)
+      .find((p) => p.type === 'currency');
+    return part?.value ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/**
+ * @param {number} cents
+ * @returns {string} e.g. "$2,450.00" in the active currency (see
+ *   `setActiveCurrency`) — locale fixed at `en-US` (thousands/decimal
+ *   punctuation, symbol placement) regardless of the browser's own
+ *   locale, so output stays deterministic and matches this app's existing
+ *   number formatting everywhere else, independent of which currency is
+ *   selected. `Intl.NumberFormat` handles each currency's real minor-unit
+ *   convention correctly on its own (e.g. JPY has no decimal places) —
+ *   this file doesn't hardcode that per currency.
+ */
 function formatCents(cents) {
   const safe = Number.isFinite(cents) ? cents : 0;
-  const sign = safe < 0 ? '-' : '';
-  const abs = Math.abs(Math.round(safe));
-  const dollars = Math.floor(abs / 100);
-  const remainder = abs % 100;
-  return `${sign}$${dollars.toLocaleString('en-US')}.${String(remainder).padStart(2, '0')}`;
+  const rounded = Math.round(safe);
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: activeCurrency }).format(rounded / 100);
+  } catch {
+    // activeCurrency is only ever set from SUPPORTED_CURRENCIES via
+    // setActiveCurrency, so this should be unreachable — kept as a
+    // last-resort fallback rather than letting a formatting call throw.
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: DEFAULT_CURRENCY }).format(rounded / 100);
+  }
 }
 
 /** @param {number} cents @returns {number} plain dollars, e.g. for pre-filling a form input */
@@ -2549,61 +2720,213 @@ function centsToDollarString(cents) {
 }
 
 
-// ---- src/ui/components/amount-field.js ----
+// ---- src/modules/settings/selectors.js ----
 
-/**
- * A labeled money input. Free-text (not type="number") so users can type
- * "$1,200.00" naturally — parsing/validation happens on submit via
- * core/money.js's parseAmountToCents, not on every keystroke.
- * @param {string} labelText
- * @param {{name?: string, valueCents?: number|null}} [options]
- * @returns {HTMLLabelElement} with `.amountInput` set to the nested <input>
- */
-function amountField(labelText, { name, valueCents = null } = {}) {
-  const input = el('input', {
-    type: 'text',
-    inputmode: 'decimal',
-    name,
-    class: 'field__input',
-    value: valueCents != null ? centsToDollarString(valueCents) : '',
-    placeholder: '0.00',
-    'aria-label': labelText,
-  });
-  const label = el('label', { class: 'field' }, [el('span', { class: 'field__label' }, labelText), input]);
-  label.amountInput = input;
-  return label;
+function getOnboardingCompletedAt(state) {
+  return state.settings?.onboardingCompletedAt ?? null;
+}
+
+function hasCompletedOnboarding(state) {
+  return getOnboardingCompletedAt(state) != null;
+}
+
+/** @returns {'light'|'dark'|'system'} the stored theme preference — 'system' means "follow the OS," the field's own default. */
+function getTheme(state) {
+  const theme = state.settings?.theme;
+  return theme === 'light' || theme === 'dark' ? theme : 'system';
+}
+
+/** @returns {string|null} the display name used for greeting copy, or null if never set. */
+function getDisplayName(state) {
+  return state.settings?.displayName ?? null;
+}
+
+/** @returns {string} the stored display-currency preference (an ISO 4217 code) — 'USD' if never set or the stored value isn't recognized. */
+function getCurrency(state) {
+  return SUPPORTED_CURRENCIES.includes(state.settings?.currency) ? state.settings.currency : 'USD';
 }
 
 
-// ---- src/ui/components/money-item.js ----
+// ---- src/modules/settings/reducer.js ----
+
+// Settings is one of the few slices that predates any feature module
+// (docs/DATA-MODEL.md "Settings") but never had its own reducer — every
+// field was either a Phase 0 default or (displayName, for a long while)
+// never actually set anywhere. Phase 7's onboarding flow is what first
+// needed to mutate it; onboarding's "Your name" step is what finally set
+// displayName for the first time, later still.
+function settingsReducer(settings = {}, action) {
+  switch (action.type) {
+    case 'settings/complete-onboarding': {
+      if (settings.onboardingCompletedAt) return settings; // already completed — no-op
+      return { ...settings, onboardingCompletedAt: action.now };
+    }
+    case 'settings/set-theme': {
+      if (!['light', 'dark', 'system'].includes(action.theme)) return settings; // ignore an invalid value rather than storing garbage
+      return { ...settings, theme: action.theme };
+    }
+    case 'settings/set-display-name': {
+      const name = typeof action.name === 'string' ? action.name.trim() : '';
+      return { ...settings, displayName: name || null };
+    }
+    case 'settings/set-currency': {
+      if (!SUPPORTED_CURRENCIES.includes(action.currency)) return settings; // ignore an invalid/unsupported code rather than storing garbage
+      return { ...settings, currency: action.currency };
+    }
+    default:
+      return settings;
+  }
+}
+
+
+// ---- src/modules/settings/index.js ----
+// The Settings module's public interface. See docs/ARCHITECTURE.md §7.
+
+
+
+// ---- src/ui/components/theme-toggle.js ----
+// A small icon button in the header bar for an explicit Light/Dark
+// preference — wires up the `settings.theme` field (src/modules/settings/)
+// that already existed but was never read/written by anything before this
+// (see CLAUDE.md "Current status"). No stored preference ('system', the
+// default) means "keep following the OS," exactly as before this existed.
+
 
 /**
- * A single row in a money list (income/bill/planned-expense/expense) —
- * an optional leading icon chip, title, small meta pieces, and action
- * buttons.
- * @param {object} options
- * @param {string} options.title
- * @param {(string|HTMLElement|null)[]} [options.meta]
- * @param {HTMLElement[]} [options.actions]
- * @param {HTMLElement|null} [options.icon] a pre-built icon chip (see
- *   src/ui/components/icons.js `iconChip`/`categoryIconChip`) — this file
- *   stays agnostic about which icon/color a row gets, so it never needs
- *   to know about categories or list types itself.
+ * The theme actually in effect right now — the explicit `settings.theme`
+ * choice if there is one, otherwise the OS's own `prefers-color-scheme`.
+ * @param {object} state
+ * @returns {'light'|'dark'}
  */
-function renderMoneyItem({ title, meta = [], actions = [], icon = null }) {
-  const metaEls = meta.filter(Boolean).map((m) => (typeof m === 'string' ? el('span', { class: 'money-item__meta-text' }, m) : m));
-  return el(
-    'li',
-    { class: 'money-item' },
-    [
-      icon,
-      el('div', { class: 'money-item__body' }, [
-        el('span', { class: 'money-item__title' }, title),
-        el('div', { class: 'money-item__meta' }, metaEls),
-      ]),
-      el('div', { class: 'money-item__actions' }, actions),
-    ].filter(Boolean)
+function getEffectiveTheme(state) {
+  const stored = getTheme(state);
+  if (stored === 'light' || stored === 'dark') return stored;
+  return typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+/**
+ * @param {object} options
+ * @param {object} options.state
+ * @param {Function} options.dispatch
+ */
+function renderThemeToggle({ state, dispatch }) {
+  const effective = getEffectiveTheme(state);
+  // The icon shown is the mode a click switches *to* — a moon while
+  // currently light (tap for dark), a sun while currently dark (tap for
+  // light) — the common convention for this control.
+  const nextTheme = effective === 'dark' ? 'light' : 'dark';
+  const icon = effective === 'dark' ? 'sun' : 'moon';
+  const label = effective === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+
+  return iconButton(icon, label, () => dispatch(setThemeAction(nextTheme)), { tone: 'neutral' });
+}
+
+
+// ---- src/ui/components/currency-selector.js ----
+// The currency picker — in the header bar's right-side controls group,
+// next to the period selector and theme toggle (moved there from the
+// brand area at the user's explicit follow-up request; see CLAUDE.md
+// "Current status" for that history). Purely a *display* preference:
+// picking a currency here only changes how src/core/money.js's
+// `formatCents` renders amounts everywhere in the app (via
+// `setActiveCurrency`, set once per render by src/ui/shell.js). It does
+// not convert, store a second currency alongside the first, or touch any
+// stored amount — see docs/DATA-MODEL.md "Settings" and money.js's own
+// `SUPPORTED_CURRENCIES` comment for the full reasoning.
+//
+// Same anchored scrim+panel structure as period-selector.js (a
+// transparent full-page click-catcher behind the panel, closing on an
+// outside click or Escape without a raw `document`-level listener that
+// would outlive this render pass) — not sharing code with it beyond that
+// established pattern, since a plain currency list has none of
+// period-selector's custom-date-range complexity to reuse. Anchored to
+// the *right* edge of its toggle (`right: 0`), matching period-selector's
+// own panel now that this toggle also lives in the right-side controls
+// group, near the right edge of the header bar.
+//
+// The toggle itself shows the currency *sign* (e.g. "$", "€"), not the
+// 3-letter code — a plain `.icon-btn`, not `iconButton()` (icons.js's
+// helper always renders a hand-authored SVG glyph; this needs a text
+// character instead, so it's built directly here with the same CSS
+// class for a visually identical square button).
+
+
+const CURRENCY_LABEL = {
+  USD: 'USD — US Dollar ($)',
+  EUR: 'EUR — Euro (€)',
+  GBP: 'GBP — British Pound (£)',
+  JPY: 'JPY — Japanese Yen (¥)',
+  CAD: 'CAD — Canadian Dollar ($)',
+  AUD: 'AUD — Australian Dollar ($)',
+};
+
+// Whether the dropdown panel is open — transient UI state, deliberately
+// outside the store (see docs/ARCHITECTURE.md §4), same convention as
+// period-selector.js's own `panelOpen`.
+let currencyPanelOpen = false;
+
+/**
+ * @param {object} options
+ * @param {object} options.state
+ * @param {Function} options.dispatch
+ * @param {() => void} [options.requestRender]
+ */
+function renderCurrencySelector({ state, dispatch, requestRender }) {
+  const current = getCurrency(state);
+
+  const toggle = el(
+    'button',
+    {
+      type: 'button',
+      class: 'icon-btn currency-selector__toggle',
+      'aria-label': `Currency: ${current}. Change display currency.`,
+      title: `Currency: ${current}`,
+      onclick: () => {
+        currencyPanelOpen = !currencyPanelOpen;
+        requestRender?.();
+      },
+    },
+    getCurrencySymbol(current)
   );
+
+  const wrapper = el('div', { class: 'currency-selector' }, [toggle]);
+  if (!currencyPanelOpen) return wrapper;
+
+  const close = () => {
+    currencyPanelOpen = false;
+    requestRender?.();
+  };
+
+  const options = el(
+    'div',
+    { class: 'currency-selector__options', role: 'group', 'aria-label': 'Select a display currency' },
+    SUPPORTED_CURRENCIES.map((code) =>
+      el(
+        'button',
+        {
+          type: 'button',
+          class: `currency-selector__option${code === current ? ' currency-selector__option--active' : ''}`,
+          onclick: () => {
+            dispatch(setCurrencyAction(code));
+            close();
+          },
+        },
+        CURRENCY_LABEL[code] ?? code
+      )
+    )
+  );
+
+  const panel = el('div', { class: 'currency-selector__panel', role: 'dialog', 'aria-label': 'Currency' }, [options]);
+  const scrim = el('div', { class: 'currency-selector__scrim' }, [panel]);
+  scrim.onclick = (event) => {
+    if (event.target === scrim) close();
+  };
+  scrim.onkeydown = (event) => {
+    if (event.key === 'Escape') close();
+  };
+
+  wrapper.appendChild(scrim);
+  return wrapper;
 }
 
 
@@ -2668,6 +2991,67 @@ function renderMoreOptions(buildFields, { startExpanded = false } = {}) {
 }
 
 
+// ---- src/ui/components/popup.js ----
+// A shared popup/modal helper — every "add" form in the app (Quick
+// Actions' four buttons, the Safe-to-Spend hero's "+ Add expense") opens
+// through this one function, so the open/close/focus/scroll-lock behavior
+// only exists once. Built on the modal CSS foundation in
+// src/styles/components.css (".modal-backdrop"/".modal", originally laid
+// down in Phase 1, first actually used for Quick Actions).
+
+
+/**
+ * @param {object} options
+ * @param {string} options.titleId heading id, for the dialog's aria-labelledby
+ * @param {string} options.title
+ * @param {HTMLElement} options.body usually a `<form>`
+ * @param {() => void} options.onClose called on: the header's close
+ *   button, clicking the backdrop itself (not a click that started inside
+ *   the popup), or Escape while focus is anywhere inside it.
+ * @returns {HTMLElement} append this anywhere — it's `position: fixed`,
+ *   so it covers the full viewport regardless of where it sits in the DOM
+ *   (verified no ancestor in this codebase sets transform/filter/
+ *   will-change, which would otherwise break that).
+ */
+function renderPopup({ titleId, title, body, onClose }) {
+  // Background scroll-lock is NOT handled here — see src/ui/shell.js's
+  // render(), which derives `document.body.style.overflow` fresh on every
+  // render from whether a `.modal-backdrop` is actually present in the
+  // DOM. An earlier version locked/restored it right here, capturing
+  // "the overflow value to restore" in this closure — which broke the
+  // moment a caller's form `onSubmit` closed the popup by calling its own
+  // local close() directly (every caller's `onSubmit: (input) => {
+  // dispatch(...); close(); }` does exactly this) instead of routing
+  // through this function's close — that path never restored the
+  // overflow, so submitting *any* popup form left scroll permanently
+  // locked. Deriving it from DOM presence instead makes it self-correcting
+  // regardless of which of the several ways a popup can close.
+  const header = el('div', { class: 'modal__header' }, [el('h2', { id: titleId }, title), iconButton('close', 'Close', onClose)]);
+  const modal = el(
+    'div',
+    { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
+    [header, el('div', { class: 'modal__body' }, [body])]
+  );
+  const backdrop = el('div', { class: 'modal-backdrop' }, [modal]);
+  backdrop.onclick = (event) => {
+    if (event.target === backdrop) onClose();
+  };
+  backdrop.onkeydown = (event) => {
+    if (event.key === 'Escape') onClose();
+  };
+
+  // This whole tree is still detached at this point — the caller's render
+  // pass builds it, then attaches it to `document` in one shot afterward
+  // (see src/ui/shell.js's `main.appendChild(...)`). Calling `.focus()`
+  // on a detached element is a silent no-op in a real browser, so the
+  // focus move has to wait until right after that attach actually
+  // happens — one animation frame is enough and keeps this framework-free.
+  requestAnimationFrame(() => focusFirstField(modal));
+
+  return backdrop;
+}
+
+
 // ---- src/core/id.js ----
 // Client-side unique id generation. See docs/DATA-MODEL.md §7 — timestamp
 // + random suffix is sufficient uniqueness for a single-user, single-device
@@ -2700,6 +3084,278 @@ function createId(prefix = '') {
   const base = `${timestamp.toString(36)}${sequence}_${random}`;
 
   return prefix ? `${prefix}_${base}` : base;
+}
+
+
+// ---- src/modules/expense-drafts/actions.js ----
+// Action creators for the Expense Drafts module — the data behind "Brain
+// dump" quick capture (docs/DATA-MODEL.md "ExpenseDraft"). See
+// src/modules/incomes/actions.js for the id/timestamp-in-action-creator
+// convention this follows. Deliberately no update action: a draft is
+// never edited in place, only created (capture) and deleted (dismissed,
+// or removed once converted into a real Expense — see
+// src/ui/components/inbox-section.js).
+
+
+/**
+ * @param {{text: string}} input the raw captured note; becomes the
+ *   Expense's description if this draft is later converted
+ * @param {{now?: Date}} [options]
+ */
+function createExpenseDraftAction(input, { now = new Date() } = {}) {
+  return {
+    type: 'expenseDrafts/create',
+    expenseDraft: {
+      id: createId('ed'),
+      text: input?.text ?? '',
+      createdAt: now.toISOString(),
+    },
+  };
+}
+
+function deleteExpenseDraftAction(id) {
+  return { type: 'expenseDrafts/delete', id };
+}
+
+
+// ---- src/modules/expense-drafts/selectors.js ----
+function getAllExpenseDrafts(state) {
+  return Array.isArray(state?.expenseDrafts) ? state.expenseDrafts : [];
+}
+
+/** Most recent capture first — an inbox to work through, not a log read chronologically. */
+function getExpenseDraftsSortedByRecent(state) {
+  return getAllExpenseDrafts(state)
+    .slice()
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
+
+// ---- src/core/list-entity.js ----
+// A small factory for the common "flat list of id-keyed entities with
+// create/update/delete/toggle" reducer shape shared by several budget
+// modules (Income, Bills, Planned Expenses). Not product-specific — lives
+// in /core because it's generic reducer-building logic, same spirit as
+// src/core/store.js. See docs/ARCHITECTURE.md §4 (reducers must return the
+// same array reference for a no-op) and §7 (module boundaries).
+
+/**
+ * @param {object} options
+ * @param {string} options.actionPrefix e.g. 'incomes' — actions are
+ *   `${actionPrefix}/create|update|delete|toggle`.
+ * @param {string} options.entityKey the property on the create action
+ *   holding the candidate entity, e.g. 'income'.
+ * @param {(candidate: object) => object|null} options.validateNew returns
+ *   a cleaned entity to accept, or null to reject (reducer no-op).
+ * @param {(changes: object) => object} options.sanitizeChanges whitelists/
+ *   validates an update action's `changes`, dropping anything invalid.
+ */
+function createListReducer({ actionPrefix, entityKey, validateNew, sanitizeChanges }) {
+  return function listReducer(items = [], action) {
+    switch (action.type) {
+      case `${actionPrefix}/create`: {
+        const entity = validateNew(action[entityKey]);
+        if (!entity) return items;
+        return [...items, entity];
+      }
+
+      case `${actionPrefix}/update`: {
+        const index = items.findIndex((item) => item.id === action.id);
+        if (index === -1) return items;
+        const changes = sanitizeChanges(action.changes);
+        if (Object.keys(changes).length === 0) return items;
+        const next = items.slice();
+        next[index] = { ...items[index], ...changes, updatedAt: action.now };
+        return next;
+      }
+
+      case `${actionPrefix}/delete`: {
+        const index = items.findIndex((item) => item.id === action.id);
+        if (index === -1) return items;
+        return items.filter((item) => item.id !== action.id);
+      }
+
+      case `${actionPrefix}/toggle`: {
+        const index = items.findIndex((item) => item.id === action.id);
+        if (index === -1) return items;
+        const current = items[index];
+        const next = items.slice();
+        next[index] = { ...current, [action.field]: !current[action.field], updatedAt: action.now };
+        return next;
+      }
+
+      default:
+        return items;
+    }
+  };
+}
+
+
+// ---- src/modules/expense-drafts/reducer.js ----
+
+function validateNewExpenseDraft(candidate) {
+  if (!candidate) return null;
+  const text = typeof candidate.text === 'string' ? candidate.text.trim() : '';
+  if (!text) return null;
+  return { ...candidate, text };
+}
+
+// Drafts are never edited in place (see actions.js) — only 'create' and
+// 'delete' are ever dispatched. The list-entity factory still requires a
+// sanitizeChanges function for its 'update'/'toggle' cases; returning {}
+// unconditionally makes either a guaranteed no-op rather than silently
+// allowing edits this module was never asked to support.
+function sanitizeExpenseDraftChanges() {
+  return {};
+}
+
+const expenseDraftsReducer = createListReducer({
+  actionPrefix: 'expenseDrafts',
+  entityKey: 'expenseDraft',
+  validateNew: validateNewExpenseDraft,
+  sanitizeChanges: sanitizeExpenseDraftChanges,
+});
+
+
+// ---- src/modules/expense-drafts/index.js ----
+// The Expense Drafts module's public interface — the data behind "Brain
+// dump" quick capture. Other modules/UI import from here — never from
+// actions.js/reducer.js/selectors.js directly. See docs/ARCHITECTURE.md
+// §7. Deliberately scoped to money, not a general notes list: every
+// ExpenseDraft either becomes a real Expense (src/modules/expenses/) via
+// "Convert to expense" or is dismissed — see
+// src/ui/components/brain-dump.js and CLAUDE.md's "Current status" for
+// the scope decision this followed (docs/PRODUCT.md §5's "not general
+// task management" non-goal).
+
+
+
+// ---- src/ui/components/brain-dump.js ----
+// "Brain dump" — instant quick-capture for a stray thought, reachable
+// from anywhere via the header bar's persistent button or the global "N"
+// keyboard shortcut (src/ui/shell.js). Deliberately scoped to money, not
+// a general notes/task-capture feature: what this stores is an
+// ExpenseDraft (docs/DATA-MODEL.md), an *unconfirmed expense stub* —
+// every one either becomes a real Expense via "Convert to expense" (see
+// src/ui/components/inbox-section.js, which owns that popup) or is
+// dismissed. Nothing here is ever read by Safe-to-Spend directly, same as
+// Category Budgets (docs/SAFE-TO-SPEND.md §3b) — see CLAUDE.md's "Current
+// status" for the scope conflict this resolved
+// (docs/PRODUCT.md §5's "not general task management" non-goal) and why
+// it was resolved this way rather than as a standalone Inbox of arbitrary
+// notes.
+
+
+// Whether the Brain Dump capture popup is open — transient UI state,
+// deliberately outside the store (see docs/ARCHITECTURE.md §4).
+// `openBrainDumpCapture` is exported (not just the button's own onclick)
+// so src/ui/shell.js's global "N" keydown listener can open the same
+// popup from anywhere in the app, not only via this file's own button.
+let brainDumpOpen = false;
+
+/** @param {() => void} [requestRender] */
+function openBrainDumpCapture(requestRender) {
+  brainDumpOpen = true;
+  requestRender?.();
+}
+
+/** The persistent "+ Brain dump" header button. @param {{requestRender?: () => void}} options */
+function renderBrainDumpButton({ requestRender }) {
+  return el(
+    'button',
+    { type: 'button', class: 'btn btn--secondary btn--small', onclick: () => openBrainDumpCapture(requestRender) },
+    '+ Brain dump'
+  );
+}
+
+function renderCaptureForm({ dispatch, requestRender }) {
+  const input = el('input', {
+    type: 'text',
+    name: 'text',
+    class: 'field__input',
+    placeholder: "What's on your mind?",
+    autocomplete: 'off',
+  });
+  const label = el('label', { class: 'field' }, [el('span', { class: 'field__label' }, 'Note'), input]);
+
+  const form = el('form', { class: 'money-form' }, [
+    label,
+    el('div', { class: 'money-form__buttons' }, [el('button', { type: 'submit', class: 'btn btn--primary btn--small' }, 'Save')]),
+  ]);
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const text = input.value.trim();
+    if (!text) return; // nothing typed — quietly do nothing, no error, no confirmation step either way
+    dispatch(createExpenseDraftAction({ text }, { now: new Date() }));
+    // Deliberately no close() call here — per the feature spec, saving
+    // clears the field and keeps the popup open for the next thought.
+    // `dispatch` above already triggers a full re-render (src/core/
+    // store.js notifies subscribers synchronously), which rebuilds this
+    // form from scratch — a fresh, empty `input` — and popup.js's own
+    // requestAnimationFrame(focusFirstField) refocuses that fresh input
+    // automatically, so nothing extra is needed to clear/refocus by hand.
+  });
+
+  return form;
+}
+
+/** The capture popup itself, or null when closed. @param {{dispatch: Function, requestRender?: () => void}} options */
+function renderBrainDumpPopup({ dispatch, requestRender }) {
+  if (!brainDumpOpen) return null;
+  const close = () => {
+    brainDumpOpen = false;
+    requestRender?.();
+  };
+  return renderPopup({
+    titleId: 'brain-dump-heading',
+    title: 'Brain dump',
+    body: renderCaptureForm({ dispatch, requestRender }),
+    onClose: close,
+  });
+}
+
+
+// ---- src/ui/components/header-bar.js ----
+// The dashboard's header bar: a small brand mark on the left, and on the
+// right — "+ Brain dump", the global period selector, the currency
+// picker, and the theme toggle. Deliberately not a multi-module nav rail
+// — this stays the single-screen Money app it already is (see CLAUDE.md
+// "Current status" for why that was a considered-and-declined option,
+// not an oversight).
+
+
+/**
+ * @param {object} options
+ * @param {object} options.state
+ * @param {Function} options.dispatch
+ * @param {{period: string, from: string|null, to: string|null}} options.period
+ * @param {(next: {period: string, from: string|null, to: string|null}) => void} options.onPeriodChange
+ * @param {() => void} [options.requestRender]
+ */
+function renderHeaderBar({ state, dispatch, period, onPeriodChange, requestRender }) {
+  const brand = el('div', { class: 'header-bar__brand' }, [iconChip('wallet', { small: true }), el('span', { class: 'header-bar__brand-name' }, 'Money')]);
+
+  // "+ Brain dump" is a persistent, always-visible quick-capture button —
+  // same header row as the brand mark, on every load, not something that
+  // has to be discovered inside a card. Its own popup (rendered below,
+  // alongside this header's other elements) is also how the global "N"
+  // keyboard shortcut (src/ui/shell.js) surfaces, since both open the same
+  // transient state in src/ui/components/brain-dump.js. The currency
+  // picker sits here too, alongside the period selector and theme
+  // toggle — moved from the brand area at the user's explicit follow-up
+  // request (see currency-selector.js's own header comment for that
+  // history).
+  const controls = el('div', { class: 'header-bar__controls' }, [
+    renderBrainDumpButton({ requestRender }),
+    renderPeriodSelector({ value: period, onChange: onPeriodChange, requestRender }),
+    renderCurrencySelector({ state, dispatch, requestRender }),
+    renderThemeToggle({ state, dispatch }),
+  ]);
+
+  const brainDumpPopup = renderBrainDumpPopup({ dispatch, requestRender });
+
+  return el('header', { class: 'header-bar' }, [brand, controls, brainDumpPopup].filter(Boolean));
 }
 
 
@@ -2786,6 +3442,32 @@ function formatFriendlyDate(date = new Date()) {
   }).format(date);
 }
 
+/**
+ * A short, relative label for a recent timestamp — "just now", "2m ago",
+ * "3h ago", "5d ago" — used by the Inbox section (src/ui/components/
+ * inbox-section.js) for Brain Dump capture timestamps, which are always
+ * recent by nature (a note sits in the Inbox until acted on, but it was
+ * always *captured* moments ago). Falls back to `formatFriendlyDate` past
+ * a week, where "12d ago" stops being a useful unit. Negative elapsed
+ * time (clock skew) is clamped to "just now" rather than shown as
+ * nonsensical negative minutes.
+ * @param {string} isoTimestamp
+ * @param {Date} [now]
+ * @returns {string}
+ */
+function formatRelativeTime(isoTimestamp, now = new Date()) {
+  const then = new Date(isoTimestamp);
+  const diffSeconds = Math.max(0, Math.round((now.getTime() - then.getTime()) / 1000));
+  if (diffSeconds < 60) return 'just now';
+  const diffMinutes = Math.round(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return formatFriendlyDate(then);
+}
+
 /** @param {Date} date @param {number} n @returns {Date} `date` plus `n` local days */
 function addDays(date, n) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + n);
@@ -2854,6 +3536,426 @@ function advanceByFrequency(date, frequency) {
   if (frequency === 'monthly') return addMonths(date, 1);
   return date;
 }
+
+
+// ---- src/modules/bills/actions.js ----
+// Action creators for the Bills module. See src/modules/incomes/actions.js
+// for the id/timestamp-in-action-creator convention this follows.
+
+
+/**
+ * @param {{name: string, amountCents: number, dueDate?: string, recurrence?: string}} input
+ * @param {{now?: Date}} [options]
+ */
+function createBillAction(input, { now = new Date() } = {}) {
+  const timestamp = now.toISOString();
+  return {
+    type: 'bills/create',
+    bill: {
+      id: createId('b'),
+      name: input?.name ?? '',
+      amountCents: input?.amountCents,
+      dueDate: input?.dueDate || getLocalDateKey(now),
+      recurrence: input?.recurrence || 'one-time',
+      active: true,
+      paid: false,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+  };
+}
+
+function updateBillAction(id, changes, { now = new Date() } = {}) {
+  return { type: 'bills/update', id, changes, now: now.toISOString() };
+}
+
+function deleteBillAction(id) {
+  return { type: 'bills/delete', id };
+}
+
+function toggleBillActiveAction(id, { now = new Date() } = {}) {
+  return { type: 'bills/toggle', id, field: 'active', now: now.toISOString() };
+}
+
+/** Mark a bill paid/unpaid (Phase 2 §3). */
+function toggleBillPaidAction(id, { now = new Date() } = {}) {
+  return { type: 'bills/toggle', id, field: 'paid', now: now.toISOString() };
+}
+
+
+// ---- src/modules/bills/selectors.js ----
+function getAllBills(state) {
+  return state.bills ?? [];
+}
+
+function getUnpaidBills(state) {
+  return getAllBills(state).filter((bill) => !bill.paid);
+}
+
+
+// ---- src/modules/bills/reducer.js ----
+
+const BILL_RECURRENCES = ['one-time', 'weekly', 'monthly'];
+const BILL_EDITABLE_FIELDS = ['name', 'amountCents', 'dueDate', 'recurrence'];
+
+function validateNewBill(candidate) {
+  if (!candidate) return null;
+  const name = typeof candidate.name === 'string' ? candidate.name.trim() : '';
+  if (!name || !isValidAmountCents(candidate.amountCents)) return null;
+  const recurrence = BILL_RECURRENCES.includes(candidate.recurrence) ? candidate.recurrence : 'one-time';
+  return { ...candidate, name, recurrence };
+}
+
+function sanitizeBillChanges(changes = {}) {
+  const sanitized = {};
+  for (const field of BILL_EDITABLE_FIELDS) {
+    if (field in changes) sanitized[field] = changes[field];
+  }
+  if ('name' in sanitized) {
+    const trimmed = typeof sanitized.name === 'string' ? sanitized.name.trim() : '';
+    if (trimmed) sanitized.name = trimmed;
+    else delete sanitized.name;
+  }
+  if ('amountCents' in sanitized && !isValidAmountCents(sanitized.amountCents)) {
+    delete sanitized.amountCents;
+  }
+  if ('recurrence' in sanitized && !BILL_RECURRENCES.includes(sanitized.recurrence)) {
+    delete sanitized.recurrence;
+  }
+  return sanitized;
+}
+
+const billsReducer = createListReducer({
+  actionPrefix: 'bills',
+  entityKey: 'bill',
+  validateNew: validateNewBill,
+  sanitizeChanges: sanitizeBillChanges,
+});
+
+
+// ---- src/modules/bills/balance-effect.js ----
+// How marking a Bill paid/unpaid affects the Current Balance checkpoint.
+// See docs/DATA-MODEL.md "Current Balance model" — mirrors src/modules/
+// expenses/balance-effect.js and src/modules/incomes/balance-effect.js's
+// pattern exactly (a pure function deciding *how much* to adjust, applied
+// atomically by src/main.js's rootReducer), but for the single `bills/
+// toggle` action with `field: 'paid'`. Ordinary create/update/delete and
+// the `field: 'active'` toggle never touch the balance, same as before
+// this existed.
+//
+// Why this exists: originally added to fix a real reported bug, back when
+// `sumCommittedBills` (src/modules/safe-to-spend/calculation.js) excluded
+// paid bills from a subtracted `upcomingBillsCents` term — without this
+// effect, nothing ever actually left Current Balance when a bill was
+// marked paid, so Safe-to-Spend visibly went *up* by that amount, as if
+// the money had "come back." As of a later, explicit user request, bills
+// no longer subtract from Safe-to-Spend at all while unpaid (see
+// docs/SAFE-TO-SPEND.md §2/§7) — so this debit is no longer "canceling
+// out" an earlier subtraction, it's the *only* time a bill's amount ever
+// reduces Safe-to-Spend, the first and only time it counts. Un-marking a
+// bill as paid (toggling back to unpaid) symmetrically refunds it,
+// mirroring an Expense delete.
+//
+// Deliberately narrower than Expenses, same simplification already
+// documented for Income: editing a bill's amount or deleting it after
+// it's been marked paid does not retroactively adjust the balance. Also
+// worth knowing: if a payment is *both* marked paid here *and* separately
+// logged as an Expense, that's a double deduction — this app doesn't link
+// the two, consistent with `docs/PRODUCT.md` §5's "not a full accounting/
+// double-entry bookkeeping system" non-goal. Use one or the other for a
+// given real-world payment, not both.
+
+
+/**
+ * @param {{type: string, id?: string, field?: string}} action
+ * @param {Array} prevBills the `bills` slice before this action
+ * @param {Array} nextBills the `bills` slice after this action
+ * @returns {number} signed cents to add to currentBalanceCents (negative = paid, positive = un-marked/refunded)
+ */
+function computeBillBalanceDelta(action, prevBills, nextBills) {
+  if (action.type !== 'bills/toggle' || action.field !== 'paid') return 0;
+  if (nextBills === prevBills) return 0; // the reducer no-op'd (unknown id) — nothing to apply
+
+  const after = nextBills.find((bill) => bill.id === action.id);
+  if (!after || !isValidAmountCents(after.amountCents)) return 0;
+
+  return after.paid ? -after.amountCents : after.amountCents;
+}
+
+
+// ---- src/modules/bills/index.js ----
+// The Bills module's public interface. See docs/ARCHITECTURE.md §7.
+
+
+
+// ---- src/modules/planned-expenses/actions.js ----
+// Action creators for the Planned Expenses module. See
+// src/modules/incomes/actions.js for the id/timestamp convention.
+
+
+/**
+ * @param {{name: string, amountCents: number, plannedDate?: string, category?: string, notes?: string}} input
+ * @param {{now?: Date}} [options]
+ */
+function createPlannedExpenseAction(input, { now = new Date() } = {}) {
+  const timestamp = now.toISOString();
+  return {
+    type: 'plannedExpenses/create',
+    plannedExpense: {
+      id: createId('pe'),
+      name: input?.name ?? '',
+      amountCents: input?.amountCents,
+      plannedDate: input?.plannedDate || null,
+      category: input?.category || null,
+      notes: input?.notes || null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+  };
+}
+
+function updatePlannedExpenseAction(id, changes, { now = new Date() } = {}) {
+  return { type: 'plannedExpenses/update', id, changes, now: now.toISOString() };
+}
+
+function deletePlannedExpenseAction(id) {
+  return { type: 'plannedExpenses/delete', id };
+}
+
+
+// ---- src/modules/planned-expenses/selectors.js ----
+function getAllPlannedExpenses(state) {
+  return state.plannedExpenses ?? [];
+}
+
+
+// ---- src/modules/planned-expenses/reducer.js ----
+
+const PLANNED_EXPENSE_EDITABLE_FIELDS = ['name', 'amountCents', 'plannedDate', 'category', 'notes'];
+
+function validateNewPlannedExpense(candidate) {
+  if (!candidate) return null;
+  const name = typeof candidate.name === 'string' ? candidate.name.trim() : '';
+  if (!name || !isValidAmountCents(candidate.amountCents)) return null;
+  return { ...candidate, name };
+}
+
+function sanitizePlannedExpenseChanges(changes = {}) {
+  const sanitized = {};
+  for (const field of PLANNED_EXPENSE_EDITABLE_FIELDS) {
+    if (field in changes) sanitized[field] = changes[field];
+  }
+  if ('name' in sanitized) {
+    const trimmed = typeof sanitized.name === 'string' ? sanitized.name.trim() : '';
+    if (trimmed) sanitized.name = trimmed;
+    else delete sanitized.name;
+  }
+  if ('amountCents' in sanitized && !isValidAmountCents(sanitized.amountCents)) {
+    delete sanitized.amountCents;
+  }
+  return sanitized;
+}
+
+const plannedExpensesReducer = createListReducer({
+  actionPrefix: 'plannedExpenses',
+  entityKey: 'plannedExpense',
+  validateNew: validateNewPlannedExpense,
+  sanitizeChanges: sanitizePlannedExpenseChanges,
+});
+
+
+// ---- src/modules/planned-expenses/index.js ----
+// The Planned Expenses module's public interface. See docs/ARCHITECTURE.md §7.
+
+
+
+// ---- src/modules/incomes/actions.js ----
+// Action creators for the Incomes module. Non-deterministic values (id,
+// timestamps) are generated here, at dispatch time, so the reducer stays
+// pure. See docs/ARCHITECTURE.md §4.
+
+
+/**
+ * @param {{name: string, amountCents: number, frequency?: string, nextDate?: string}} input
+ * @param {{now?: Date}} [options]
+ */
+function createIncomeAction(input, { now = new Date() } = {}) {
+  const timestamp = now.toISOString();
+  return {
+    type: 'incomes/create',
+    income: {
+      id: createId('inc'),
+      name: input?.name ?? '',
+      amountCents: input?.amountCents,
+      frequency: input?.frequency || 'one-time',
+      nextDate: input?.nextDate || getLocalDateKey(now),
+      active: true,
+      received: false,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+  };
+}
+
+function updateIncomeAction(id, changes, { now = new Date() } = {}) {
+  return { type: 'incomes/update', id, changes, now: now.toISOString() };
+}
+
+function deleteIncomeAction(id) {
+  return { type: 'incomes/delete', id };
+}
+
+/** Activate/deactivate recurring income without deleting it (Phase 2 §2). */
+function toggleIncomeActiveAction(id, { now = new Date() } = {}) {
+  return { type: 'incomes/toggle', id, field: 'active', now: now.toISOString() };
+}
+
+/**
+ * Confirms an income actually arrived — the moment it credits Current
+ * Balance (see docs/DATA-MODEL.md "Current Balance model"). A one-time
+ * income is marked `received: true` (a durable, terminal state — there's
+ * no next occurrence). A recurring income instead advances `nextDate` to
+ * its next cycle, becoming "upcoming" again rather than staying
+ * permanently marked — see src/modules/incomes/reducer.js.
+ */
+function markIncomeReceivedAction(id, { now = new Date() } = {}) {
+  return { type: 'incomes/mark-received', id, now: now.toISOString() };
+}
+
+
+// ---- src/modules/incomes/selectors.js ----
+function getAllIncomes(state) {
+  return state.incomes ?? [];
+}
+
+function getActiveIncomes(state) {
+  return getAllIncomes(state).filter((income) => income.active);
+}
+
+/**
+ * Active incomes not yet confirmed received — every recurring income
+ * (which becomes "unreceived" again for its new cycle the moment
+ * `nextDate` advances, see reducer.js), plus a one-time income only until
+ * it's actually marked received.
+ */
+function getUnreceivedIncomes(state) {
+  return getActiveIncomes(state).filter((income) => !(income.frequency === 'one-time' && income.received));
+}
+
+
+// ---- src/modules/incomes/reducer.js ----
+
+const INCOME_FREQUENCIES = ['one-time', 'weekly', 'biweekly', 'monthly'];
+const INCOME_EDITABLE_FIELDS = ['name', 'amountCents', 'frequency', 'nextDate'];
+
+function validateNewIncome(candidate) {
+  if (!candidate) return null;
+  const name = typeof candidate.name === 'string' ? candidate.name.trim() : '';
+  if (!name || !isValidAmountCents(candidate.amountCents)) return null;
+  const frequency = INCOME_FREQUENCIES.includes(candidate.frequency) ? candidate.frequency : 'one-time';
+  return { ...candidate, name, frequency };
+}
+
+function sanitizeIncomeChanges(changes = {}) {
+  const sanitized = {};
+  for (const field of INCOME_EDITABLE_FIELDS) {
+    if (field in changes) sanitized[field] = changes[field];
+  }
+  if ('name' in sanitized) {
+    const trimmed = typeof sanitized.name === 'string' ? sanitized.name.trim() : '';
+    if (trimmed) sanitized.name = trimmed;
+    else delete sanitized.name;
+  }
+  if ('amountCents' in sanitized && !isValidAmountCents(sanitized.amountCents)) {
+    delete sanitized.amountCents;
+  }
+  if ('frequency' in sanitized && !INCOME_FREQUENCIES.includes(sanitized.frequency)) {
+    delete sanitized.frequency;
+  }
+  return sanitized;
+}
+
+const baseIncomesReducer = createListReducer({
+  actionPrefix: 'incomes',
+  entityKey: 'income',
+  validateNew: validateNewIncome,
+  sanitizeChanges: sanitizeIncomeChanges,
+});
+
+/**
+ * Wraps the generic list reducer with one bespoke case:
+ * `incomes/mark-received` isn't a plain field toggle (see
+ * src/modules/incomes/actions.js `markIncomeReceivedAction`) — a one-time
+ * income becomes permanently `received: true`, while a recurring income's
+ * `nextDate` advances to its next cycle instead, so it never gets
+ * permanently "stuck" as received. The actual Current Balance credit is a
+ * separate cross-slice effect (src/modules/incomes/balance-effect.js),
+ * applied atomically by src/main.js's rootReducer, mirroring how Expenses
+ * affect the balance.
+ */
+function incomesReducer(items = [], action) {
+  if (action.type === 'incomes/mark-received') {
+    const index = items.findIndex((item) => item.id === action.id);
+    if (index === -1) return items;
+    const income = items[index];
+    const next = items.slice();
+    if (income.frequency === 'one-time' || !income.frequency) {
+      if (income.received) return items; // already received — no-op
+      next[index] = { ...income, received: true, updatedAt: action.now };
+    } else {
+      if (!income.nextDate) return items; // nothing to advance from
+      const advanced = advanceByFrequency(parseLocalDate(income.nextDate), income.frequency);
+      next[index] = { ...income, nextDate: getLocalDateKey(advanced), updatedAt: action.now };
+    }
+    return next;
+  }
+  return baseIncomesReducer(items, action);
+}
+
+
+// ---- src/modules/incomes/balance-effect.js ----
+// How confirming an Income as received affects the Current Balance
+// checkpoint. See docs/DATA-MODEL.md "Current Balance model" — mirrors
+// src/modules/expenses/balance-effect.js's pattern exactly (a pure
+// function deciding *how much* to credit, applied atomically by
+// src/main.js's rootReducer), but only for the single `incomes/
+// mark-received` action; ordinary create/update/delete/toggle on an
+// Income never touch the balance, same as before this existed.
+//
+// Deliberately narrower than the Expense version: editing or deleting an
+// income that was already marked received does NOT retroactively adjust
+// the balance (an already-recurring income doesn't even keep a durable
+// "received" marker to hang that adjustment on — see reducer.js). This
+// keeps scope narrow, consistent with docs/PRODUCT.md §5's non-goal "not
+// a full accounting/double-entry bookkeeping system" — the same
+// simplification Bills' `paid` flag already has no balance-linkage at
+// all. If this ever needs to change, it's a deliberate product decision,
+// not a bug.
+
+
+/**
+ * @param {{type: string, id?: string}} action
+ * @param {Array} prevIncomes the `incomes` slice before this action
+ * @param {Array} nextIncomes the `incomes` slice after this action
+ * @returns {number} cents to add to currentBalanceCents (always >= 0 — income only ever credits)
+ */
+function computeIncomeBalanceDelta(action, prevIncomes, nextIncomes) {
+  if (action.type !== 'incomes/mark-received') return 0;
+  if (nextIncomes === prevIncomes) return 0; // the reducer no-op'd (already received, unknown id, etc.) — nothing to credit
+
+  const before = prevIncomes.find((income) => income.id === action.id);
+  // Corrupted stored amountCents (hand-edited/pre-validation localStorage
+  // data) contributes 0 rather than NaN-poisoning currentBalanceCents —
+  // same defensive pattern as expenses/balance-effect.js.
+  return before && isValidAmountCents(before.amountCents) ? before.amountCents : 0;
+}
+
+
+// ---- src/modules/incomes/index.js ----
+// The Incomes module's public interface. Other modules/UI import from
+// here — never from actions.js/reducer.js/selectors.js directly. See
+// docs/ARCHITECTURE.md §7.
+
 
 
 // ---- src/modules/expenses/actions.js ----
@@ -3028,66 +4130,6 @@ function getExpensesTotalCents(expenses) {
 }
 
 
-// ---- src/core/list-entity.js ----
-// A small factory for the common "flat list of id-keyed entities with
-// create/update/delete/toggle" reducer shape shared by several budget
-// modules (Income, Bills, Planned Expenses). Not product-specific — lives
-// in /core because it's generic reducer-building logic, same spirit as
-// src/core/store.js. See docs/ARCHITECTURE.md §4 (reducers must return the
-// same array reference for a no-op) and §7 (module boundaries).
-
-/**
- * @param {object} options
- * @param {string} options.actionPrefix e.g. 'incomes' — actions are
- *   `${actionPrefix}/create|update|delete|toggle`.
- * @param {string} options.entityKey the property on the create action
- *   holding the candidate entity, e.g. 'income'.
- * @param {(candidate: object) => object|null} options.validateNew returns
- *   a cleaned entity to accept, or null to reject (reducer no-op).
- * @param {(changes: object) => object} options.sanitizeChanges whitelists/
- *   validates an update action's `changes`, dropping anything invalid.
- */
-function createListReducer({ actionPrefix, entityKey, validateNew, sanitizeChanges }) {
-  return function listReducer(items = [], action) {
-    switch (action.type) {
-      case `${actionPrefix}/create`: {
-        const entity = validateNew(action[entityKey]);
-        if (!entity) return items;
-        return [...items, entity];
-      }
-
-      case `${actionPrefix}/update`: {
-        const index = items.findIndex((item) => item.id === action.id);
-        if (index === -1) return items;
-        const changes = sanitizeChanges(action.changes);
-        if (Object.keys(changes).length === 0) return items;
-        const next = items.slice();
-        next[index] = { ...items[index], ...changes, updatedAt: action.now };
-        return next;
-      }
-
-      case `${actionPrefix}/delete`: {
-        const index = items.findIndex((item) => item.id === action.id);
-        if (index === -1) return items;
-        return items.filter((item) => item.id !== action.id);
-      }
-
-      case `${actionPrefix}/toggle`: {
-        const index = items.findIndex((item) => item.id === action.id);
-        if (index === -1) return items;
-        const current = items[index];
-        const next = items.slice();
-        next[index] = { ...current, [action.field]: !current[action.field], updatedAt: action.now };
-        return next;
-      }
-
-      default:
-        return items;
-    }
-  };
-}
-
-
 // ---- src/modules/expenses/reducer.js ----
 
 const EDITABLE_FIELDS = ['amountCents', 'description', 'date', 'category', 'notes'];
@@ -3185,265 +4227,183 @@ function computeBalanceDelta(action, prevExpenses, nextExpenses) {
 
 
 
-// ---- src/ui/components/expenses-section.js ----
-// The Expenses section (Phase 5 — Expense Tracking): a fast add form
-// (only amount is required) and a compact recent-expenses list with
-// edit/delete — not a full accounting ledger. Categories have sensible
-// defaults but are freely editable via a <datalist>, not a locked enum.
-
-
-// Which expense row (if any) is being edited inline — transient UI state,
-// deliberately outside the store (see docs/ARCHITECTURE.md §4).
-let editingExpenseId = null;
-
-/**
- * @param {string|null|undefined} value
- * @param {string[]} knownCategories datalist suggestions — every category
- *   currently "in play" (see getKnownCategories), not a locked list; the
- *   field stays free text, so typing anything else introduces a new
- *   category, known everywhere from then on.
- * @returns {HTMLLabelElement} with `.categoryInput` set to the nested <input>
- */
-function categoryField(value, knownCategories) {
-  const input = el('input', { type: 'text', name: 'category', class: 'field__input', list: 'expense-categories', value: value || '', placeholder: 'Optional' });
-  const datalist = el(
-    'datalist',
-    { id: 'expense-categories' },
-    knownCategories.map((category) => el('option', { value: category }))
-  );
-  const label = el('label', { class: 'field' }, [el('span', { class: 'field__label' }, 'Category'), input, datalist]);
-  label.categoryInput = input;
-  return label;
-}
-
-function dateField(labelText, { name, value }) {
-  const input = el('input', { type: 'date', name, value: value || '', class: 'field__input' });
-  return el('label', { class: 'field' }, [el('span', { class: 'field__label' }, labelText), input]);
-}
-
-function expenseTextField(labelText, { name, value, placeholder }) {
-  const input = el('input', { type: 'text', name, value: value || '', class: 'field__input', placeholder });
-  return el('label', { class: 'field' }, [el('span', { class: 'field__label' }, labelText), input]);
-}
-
-/**
- * The fast-add / edit form: Amount + Category up front, everything else
- * (description/date/notes) behind "+ More options" — Phase 7's explicit
- * fast-path is "+ Add Expense → Amount → Category → Save". Editing starts
- * expanded, since there's nothing to hide once values already exist.
- * Exported for reuse by the hero's inline "+ Add expense" form
- * (src/ui/components/safe-to-spend-hero.js).
- * @param {object} options
- * @param {object} options.state used only to build the category field's
- *   suggestions (`getKnownCategories`) — this form reads no other state.
- */
-function renderExpenseForm({ state, expense = null, onSubmit, onCancel }) {
-  const isEdit = expense != null;
-  const amount = amountField('Amount', { name: 'amountCents', valueCents: expense?.amountCents ?? null });
-  const category = categoryField(expense?.category, getKnownCategories(state));
-  const error = el('p', { class: 'field__error', role: 'alert' });
-
-  const more = renderMoreOptions(
-    () => [
-      expenseTextField('Description', { name: 'description', value: expense?.description, placeholder: 'Optional' }),
-      dateField('Date', { name: 'date', value: expense?.date }),
-      expenseTextField('Notes', { name: 'notes', value: expense?.notes, placeholder: 'Optional' }),
-    ],
-    { startExpanded: isEdit }
-  );
-
-  const form = el('form', { class: 'money-form' }, [
-    amount,
-    category,
-    more.toggle,
-    more.details,
-    error,
-    el(
-      'div',
-      { class: 'money-form__buttons' },
-      [
-        el('button', { type: 'submit', class: 'btn btn--primary btn--small' }, isEdit ? 'Save' : [icon('receipt'), 'Add expense']),
-        isEdit ? el('button', { type: 'button', class: 'btn btn--secondary btn--small', onclick: () => onCancel() }, 'Cancel') : null,
-      ].filter(Boolean)
-    ),
-  ]);
-
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const amountCents = parseAmountToCents(amount.amountInput.value);
-    if (amountCents == null) {
-      error.textContent = 'Enter an amount of 0 or more, like 12.50.';
-      return;
-    }
-    error.textContent = '';
-
-    const formData = new FormData(form);
-    const payload = {
-      amountCents,
-      category: formData.get('category')?.trim() || null,
-      description: formData.get('description')?.trim() || null,
-      notes: formData.get('notes')?.trim() || null,
-    };
-    const date = formData.get('date');
-    if (date) payload.date = date; // omit when blank so an edit never clobbers it with nothing
-
-    onSubmit(payload);
-    if (!isEdit) {
-      amount.amountInput.value = '';
-      category.categoryInput.value = '';
-    }
-  });
-
-  return form;
-}
-
-/**
- * @param {object} options
- * @param {object} options.state
- * @param {Function} options.dispatch
- * @param {() => void} [options.requestRender]
- * @param {{period: string, from: string|null, to: string|null}} options.period
- *   the header bar's global period selector (src/ui/components/
- *   period-selector.js) — the single source of truth for which stretch of
- *   time this list shows; no per-card filter here anymore.
- */
-function renderExpensesSection({ state, dispatch, requestRender, period }) {
-  const expenses = getExpensesForPeriod(state, { period: period.period, from: period.from, to: period.to });
-
-  const items = expenses.map((expense) => {
-    if (expense.id === editingExpenseId) {
-      return el('li', { class: 'money-item money-item--editing' }, [
-        renderExpenseForm({
-          state,
-          expense,
-          onSubmit: (changes) => {
-            dispatch(updateExpenseAction(expense.id, changes, { now: new Date() }));
-            editingExpenseId = null;
-            requestRender?.();
-          },
-          onCancel: () => {
-            editingExpenseId = null;
-            requestRender?.();
-          },
-        }),
-      ]);
-    }
-    return renderMoneyItem({
-      icon: categoryIconChip(expense.category),
-      title: expense.description || expense.category || 'Expense',
-      meta: [formatCents(expense.amountCents), expense.category, `${expense.date}`],
-      actions: [
-        el(
-          'button',
-          {
-            type: 'button',
-            class: 'btn btn--secondary btn--small',
-            onclick: () => {
-              editingExpenseId = expense.id;
-              requestRender?.();
-            },
-          },
-          'Edit'
-        ),
-        el(
-          'button',
-          {
-            type: 'button',
-            class: 'btn btn--secondary btn--small',
-            onclick: () => {
-              if (window.confirm('Delete this expense? Its amount will be added back to your current balance.')) {
-                dispatch(deleteExpenseAction(expense.id));
-              }
-            },
-          },
-          'Delete'
-        ),
-      ],
-    });
-  });
-
-  const list = expenses.length > 0 ? el('ul', { class: 'money-list' }, items) : emptyState('No spending in that period.');
-
-  // Always shown — the header bar's period is always some explicit
-  // selection now (no more implicit "Recent" default), so a total is
-  // always meaningful.
-  const total =
-    expenses.length > 0
-      ? el('p', { class: 'expenses-filter__total' }, `Total: ${formatCents(getExpensesTotalCents(expenses))} · ${expenses.length} expense${expenses.length === 1 ? '' : 's'}`)
-      : null;
-
-  // No add-expense form here — that's the hero's job now (its own inline
-  // "+ Add expense" button, src/ui/components/safe-to-spend-hero.js), and
-  // no per-card period filter — that's the header bar's job now
-  // (src/ui/components/period-selector.js). This section is purely the
-  // expenses list + inline edit/delete for whatever period is selected.
-  return el(
-    'section',
-    { class: 'card', 'aria-labelledby': 'expenses-heading' },
-    [sectionHeading('receipt', 'Expenses', 'expenses-heading'), total, list].filter(Boolean)
-  );
-}
-
-
-// ---- src/ui/components/popup.js ----
-// A shared popup/modal helper — every "add" form in the app (Quick
-// Actions' four buttons, the Safe-to-Spend hero's "+ Add expense") opens
-// through this one function, so the open/close/focus/scroll-lock behavior
-// only exists once. Built on the modal CSS foundation in
-// src/styles/components.css (".modal-backdrop"/".modal", originally laid
-// down in Phase 1, first actually used for Quick Actions).
+// ---- src/modules/income-receipts/create-receipt.js ----
+// Builds the historical record created every time an Income is confirmed
+// received — see docs/DATA-MODEL.md "IncomeReceipt". This is *not* a
+// user-facing CRUD entity (no create/update/delete actions of its own) —
+// it's an automatic log, one record appended per `incomes/mark-received`
+// dispatch, applied atomically alongside that action's existing balance
+// effect (src/modules/incomes/balance-effect.js) by src/main.js's
+// rootReducer, the one place with visibility into all three slices
+// (`incomes`, `incomeReceipts`, `budget`) this single action touches.
+//
+// Pure — decides *what record to create*, never mutates state itself,
+// same shape as every other *-effect.js in this codebase.
 
 
 /**
- * @param {object} options
- * @param {string} options.titleId heading id, for the dialog's aria-labelledby
- * @param {string} options.title
- * @param {HTMLElement} options.body usually a `<form>`
- * @param {() => void} options.onClose called on: the header's close
- *   button, clicking the backdrop itself (not a click that started inside
- *   the popup), or Escape while focus is anywhere inside it.
- * @returns {HTMLElement} append this anywhere — it's `position: fixed`,
- *   so it covers the full viewport regardless of where it sits in the DOM
- *   (verified no ancestor in this codebase sets transform/filter/
- *   will-change, which would otherwise break that).
+ * @param {{id: string, name: string, amountCents: number}|undefined} income
+ *   the confirmed income, read *before* the mark-received mutation (its
+ *   amount/name don't change during that mutation, but reading pre-mutation
+ *   state is the more defensive choice — see src/main.js).
+ * @param {Date} now
+ * @returns {{id: string, incomeId: string, name: string, amountCents: number, date: string, createdAt: string}|null}
+ *   `null` if there's nothing valid to record (unknown income, or a
+ *   corrupted/invalid amount — the same defensive guard every balance
+ *   effect in this codebase uses, so a bad stored value can't
+ *   NaN-poison a receipt).
  */
-function renderPopup({ titleId, title, body, onClose }) {
-  // Background scroll-lock is NOT handled here — see src/ui/shell.js's
-  // render(), which derives `document.body.style.overflow` fresh on every
-  // render from whether a `.modal-backdrop` is actually present in the
-  // DOM. An earlier version locked/restored it right here, capturing
-  // "the overflow value to restore" in this closure — which broke the
-  // moment a caller's form `onSubmit` closed the popup by calling its own
-  // local close() directly (every caller's `onSubmit: (input) => {
-  // dispatch(...); close(); }` does exactly this) instead of routing
-  // through this function's close — that path never restored the
-  // overflow, so submitting *any* popup form left scroll permanently
-  // locked. Deriving it from DOM presence instead makes it self-correcting
-  // regardless of which of the several ways a popup can close.
-  const header = el('div', { class: 'modal__header' }, [el('h2', { id: titleId }, title), iconButton('close', 'Close', onClose)]);
-  const modal = el(
-    'div',
-    { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
-    [header, el('div', { class: 'modal__body' }, [body])]
-  );
-  const backdrop = el('div', { class: 'modal-backdrop' }, [modal]);
-  backdrop.onclick = (event) => {
-    if (event.target === backdrop) onClose();
+function createIncomeReceipt(income, now) {
+  if (!income || !isValidAmountCents(income.amountCents)) return null;
+  return {
+    id: createId('ir'),
+    incomeId: income.id,
+    name: income.name,
+    amountCents: income.amountCents,
+    date: getLocalDateKey(now),
+    createdAt: now.toISOString(),
   };
-  backdrop.onkeydown = (event) => {
-    if (event.key === 'Escape') onClose();
-  };
-
-  // This whole tree is still detached at this point — the caller's render
-  // pass builds it, then attaches it to `document` in one shot afterward
-  // (see src/ui/shell.js's `main.appendChild(...)`). Calling `.focus()`
-  // on a detached element is a silent no-op in a real browser, so the
-  // focus move has to wait until right after that attach actually
-  // happens — one animation frame is enough and keeps this framework-free.
-  requestAnimationFrame(() => focusFirstField(modal));
-
-  return backdrop;
 }
+
+
+// ---- src/modules/income-receipts/selectors.js ----
+
+function getAllIncomeReceipts(state) {
+  const value = state?.incomeReceipts;
+  return Array.isArray(value) ? value : [];
+}
+
+/**
+ * Receipts whose `date` falls within `[startDateKey, endDateKey]`
+ * (either bound optional/nullable) — the real, logged counterpart to
+ * `getExpensesForPeriod` (src/modules/expenses/selectors.js), used by
+ * `getPeriodSummary`'s unbounded-period branch (src/modules/dashboard/
+ * index.js) to sum actual received income instead of projecting.
+ * @param {object} state
+ * @param {{startDateKey?: string|null, endDateKey?: string|null}} [options]
+ */
+function getIncomeReceiptsForPeriod(state, { startDateKey = null, endDateKey = null } = {}) {
+  return getAllIncomeReceipts(state).filter((receipt) => {
+    if (!receipt?.date) return false;
+    if (startDateKey && receipt.date < startDateKey) return false;
+    if (endDateKey && receipt.date > endDateKey) return false;
+    return true;
+  });
+}
+
+/**
+ * Sum of a list of receipts' amounts, skipping any with a corrupted/
+ * invalid `amountCents` rather than letting one bad value NaN-poison the
+ * total (same defensive pattern as every other *TotalCents helper in this
+ * codebase).
+ * @param {Array<{amountCents: number}>} receipts
+ */
+function getIncomeReceiptsTotalCents(receipts) {
+  let totalCents = 0;
+  for (const receipt of Array.isArray(receipts) ? receipts : []) {
+    if (!receipt || !isValidAmountCents(receipt.amountCents)) continue;
+    totalCents += receipt.amountCents;
+  }
+  return totalCents;
+}
+
+
+// ---- src/modules/income-receipts/index.js ----
+// The Income Receipts module's public interface. See docs/ARCHITECTURE.md
+// §7 and docs/DATA-MODEL.md "IncomeReceipt". Not a user-facing CRUD
+// module — no create/update/delete actions — just the automatic
+// historical log created by src/modules/incomes/ "Mark received" and read
+// by src/modules/dashboard/index.js's `getPeriodSummary`.
+
+
+
+// ---- src/modules/bill-payments/create-payment.js ----
+// Builds the historical record created every time a Bill is marked
+// paid — see docs/DATA-MODEL.md "BillPayment". Mirrors src/modules/
+// income-receipts/create-receipt.js's shape exactly, the Bill-side
+// counterpart of the same idea: neither is a user-facing CRUD entity (no
+// create/update/delete actions of its own), both are automatic logs.
+// Applied atomically alongside `bills/toggle`'s existing balance effect
+// (src/modules/bills/balance-effect.js) by src/main.js's rootReducer, the
+// one place with visibility into all three slices (`bills`,
+// `billPayments`, `budget`) that action touches.
+//
+// Pure — decides *what record to create*, never mutates state itself.
+
+
+/**
+ * @param {{id: string, name: string, amountCents: number}|undefined} bill
+ *   the bill just marked paid, read *before* the mutation (its amount/
+ *   name don't change during a paid/unpaid toggle, but the pre-mutation
+ *   slice is the more defensive choice — see src/main.js).
+ * @param {Date} now
+ * @returns {{id: string, billId: string, name: string, amountCents: number, date: string, createdAt: string}|null}
+ *   `null` if there's nothing valid to record (unknown bill, or a
+ *   corrupted/invalid amount — the same defensive guard every balance
+ *   effect in this codebase uses).
+ */
+function createBillPayment(bill, now) {
+  if (!bill || !isValidAmountCents(bill.amountCents)) return null;
+  return {
+    id: createId('bp'),
+    billId: bill.id,
+    name: bill.name,
+    amountCents: bill.amountCents,
+    date: getLocalDateKey(now),
+    createdAt: now.toISOString(),
+  };
+}
+
+
+// ---- src/modules/bill-payments/selectors.js ----
+
+function getAllBillPayments(state) {
+  const value = state?.billPayments;
+  return Array.isArray(value) ? value : [];
+}
+
+/**
+ * Payments whose `date` falls within `[startDateKey, endDateKey]` (either
+ * bound optional/nullable) — the real, logged counterpart to
+ * `getExpensesForPeriod`/`getIncomeReceiptsForPeriod`, used by
+ * `getPeriodSummary`'s "Money out" (src/modules/dashboard/index.js) to
+ * include what was actually paid, not just what was due.
+ * @param {object} state
+ * @param {{startDateKey?: string|null, endDateKey?: string|null}} [options]
+ */
+function getBillPaymentsForPeriod(state, { startDateKey = null, endDateKey = null } = {}) {
+  return getAllBillPayments(state).filter((payment) => {
+    if (!payment?.date) return false;
+    if (startDateKey && payment.date < startDateKey) return false;
+    if (endDateKey && payment.date > endDateKey) return false;
+    return true;
+  });
+}
+
+/**
+ * Sum of a list of payments' amounts, skipping any with a corrupted/
+ * invalid `amountCents` rather than letting one bad value NaN-poison the
+ * total (same defensive pattern as every other *TotalCents helper in this
+ * codebase).
+ * @param {Array<{amountCents: number}>} payments
+ */
+function getBillPaymentsTotalCents(payments) {
+  let totalCents = 0;
+  for (const payment of Array.isArray(payments) ? payments : []) {
+    if (!payment || !isValidAmountCents(payment.amountCents)) continue;
+    totalCents += payment.amountCents;
+  }
+  return totalCents;
+}
+
+
+// ---- src/modules/bill-payments/index.js ----
+// The Bill Payments module's public interface. See docs/ARCHITECTURE.md
+// §7 and docs/DATA-MODEL.md "BillPayment". Not a user-facing CRUD module
+// — no create/update/delete actions — just the automatic historical log
+// created/un-created by src/modules/bills/ "Mark paid"/"Mark unpaid" and
+// read by src/modules/dashboard/index.js's `getPeriodSummary`.
+
 
 
 // ---- src/modules/safe-to-spend/recurrence.js ----
@@ -3777,6 +4737,534 @@ function getSafeToSpendMessage(result) {
 
 
 
+// ---- src/modules/dashboard/index.js ----
+// The Dashboard module: composition/selection logic for what the
+// dashboard displays, as distinct from the Safe-to-Spend *arithmetic*
+// (src/modules/safe-to-spend/), which this module never recomputes or
+// duplicates — see docs/ARCHITECTURE.md §7 ("the Dashboard module is the
+// only module allowed to depend on many other modules' selectors at
+// once"). This file only decides *what to list* and *in what order*;
+// every dollar figure the dashboard shows comes from
+// `getSafeToSpend(state)` directly.
+
+
+const DEFAULT_LIMIT = 5;
+
+/**
+ * The most relevant upcoming commitments (active, unpaid bills + planned
+ * expenses) for a short "at a glance" list — not a full ledger. Dated
+ * items sort soonest-first; undated items sort last. See Phase 4 §
+ * "Upcoming Commitments" — "do not display a giant transaction table."
+ *
+ * @param {object} state
+ * @param {{limit?: number}} [options]
+ * @returns {{items: Array<{id: string, kind: 'bill'|'plannedExpense', name: string, amountCents: number, date: string|null}>, remainingCount: number}}
+ */
+function getUpcomingCommitments(state, { limit = DEFAULT_LIMIT } = {}) {
+  const relevantBills = getAllBills(state)
+    .filter((bill) => bill.active && !bill.paid)
+    .map((bill) => ({ id: bill.id, kind: 'bill', name: bill.name, amountCents: bill.amountCents, date: bill.dueDate ?? null }));
+
+  const relevantPlannedExpenses = getAllPlannedExpenses(state).map((expense) => ({
+    id: expense.id,
+    kind: 'plannedExpense',
+    name: expense.name,
+    amountCents: expense.amountCents,
+    date: expense.plannedDate ?? null,
+  }));
+
+  const combined = [...relevantBills, ...relevantPlannedExpenses].sort((a, b) => {
+    if (a.date && b.date) return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+    if (a.date && !b.date) return -1;
+    if (!a.date && b.date) return 1;
+    return 0;
+  });
+
+  return {
+    items: combined.slice(0, limit),
+    remainingCount: Math.max(combined.length - limit, 0),
+  };
+}
+
+/**
+ * The nearest active, unpaid bills, soonest-due first (undated last) — the
+ * subset of `getUpcomingCommitments` that's bills only, for a dedicated
+ * "Bills due soon" highlight. Same sort convention, no money arithmetic.
+ * @param {object} state
+ * @param {{limit?: number}} [options]
+ * @returns {{items: Array<{id: string, name: string, amountCents: number, date: string|null}>, totalCount: number}}
+ */
+function getUpcomingBills(state, { limit = 3 } = {}) {
+  const bills = getAllBills(state)
+    .filter((bill) => bill.active && !bill.paid)
+    .map((bill) => ({ id: bill.id, name: bill.name, amountCents: bill.amountCents, date: bill.dueDate ?? null }))
+    .sort((a, b) => {
+      if (a.date && b.date) return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+      if (a.date && !b.date) return -1;
+      if (!a.date && b.date) return 1;
+      return 0;
+    });
+
+  return { items: bills.slice(0, limit), totalCount: bills.length };
+}
+
+/**
+ * Total amount currently owed across every active, unpaid bill — the
+ * dollar-amount counterpart to `getUpcomingBills`'s `totalCount`, for the
+ * summary strip's "Total bills" tile (src/ui/components/summary-strip.js).
+ * Same active-and-unpaid filter as `getUpcomingBills`, but unbounded (no
+ * `limit`, since a sum needs every matching bill, not just the nearest
+ * few) and with no due-date horizon applied — unlike `getSafeToSpend`'s
+ * own `upcomingBillsCents` (src/modules/safe-to-spend/calculation.js),
+ * which only counts bills due before the next payday, this is every bill
+ * currently unpaid, matching what "Bills due" (the neighboring count
+ * tile) already means. Skips a corrupted `amountCents` rather than
+ * letting one bad value NaN-poison the total, same defensive pattern as
+ * `getExpensesTotalCents`.
+ * @param {object} state
+ * @returns {number}
+ */
+function getUpcomingBillsTotalCents(state) {
+  let totalCents = 0;
+  for (const bill of getAllBills(state)) {
+    if (!bill || !bill.active || bill.paid) continue;
+    if (!isValidAmountCents(bill.amountCents)) continue;
+    totalCents += bill.amountCents;
+  }
+  return totalCents;
+}
+
+/**
+ * The nearest not-yet-received incomes, soonest-due first — the "Upcoming
+ * income" card's shortlist (src/ui/components/upcoming-income.js), same
+ * shape/convention as `getUpcomingBills`. Not period-scoped — like Bills
+ * due soon, this is always "what's next," regardless of the header bar's
+ * global period selector.
+ * @param {object} state
+ * @param {{limit?: number}} [options]
+ * @returns {{items: Array<{id: string, name: string, amountCents: number, date: string|null, frequency: string}>, totalCount: number}}
+ */
+function getUpcomingIncome(state, { limit = 3 } = {}) {
+  const incomes = getUnreceivedIncomes(state)
+    .map((income) => ({ id: income.id, name: income.name, amountCents: income.amountCents, date: income.nextDate ?? null, frequency: income.frequency }))
+    .sort((a, b) => {
+      if (a.date && b.date) return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+      if (a.date && !b.date) return -1;
+      if (!a.date && b.date) return 1;
+      return 0;
+    });
+
+  return { items: incomes.slice(0, limit), totalCount: incomes.length };
+}
+
+/**
+ * The header bar's global period selector feeds every period-scoped card
+ * (This Period, Expenses) through this one function — see
+ * docs/ARCHITECTURE.md and src/ui/screens/dashboard.js. Deliberately never
+ * used by Safe-to-Spend or Current Balance, which are always "right now"
+ * snapshots regardless of the selected period.
+ *
+ * Both figures are sums of a real, dated, historical log — never a
+ * projection of what's *scheduled* — so both work identically for any
+ * period, bounded or not, with no special-casing between them:
+ * - `moneyInCents`: every `IncomeReceipt` (`docs/DATA-MODEL.md`) whose
+ *   date falls in range — created automatically each time an Income is
+ *   confirmed received ("Mark received"). An Income that's merely
+ *   *upcoming* (scheduled but not yet confirmed) never counts here — see
+ *   "Upcoming income" (`getUpcomingIncome` below) for that, a
+ *   deliberately separate, non-period-scoped concept.
+ * - `moneyOutCents`: every logged `Expense` *plus* every `BillPayment`
+ *   whose date falls in range — created automatically each time a Bill is
+ *   confirmed paid ("Mark paid"). A Bill that's merely *due* in the
+ *   period never counts here either — see `billsDueCount` below for that.
+ *
+ * This used to differ: bounded periods projected from each income's
+ * `nextDate`/`frequency` (`getIncomeOccurrencesInRange`) rather than
+ * reading confirmed receipts, and bills never contributed to "Money out"
+ * at all regardless of paid status. Both were real reported points of
+ * confusion — an amount showing as "in"/"out" before it had actually
+ * happened. `getIncomeOccurrencesInRange` is kept, unused by this file
+ * now, in case a *distinct*, separately-labeled "projected" view is ever
+ * wanted later (see its own doc comment).
+ *
+ * @param {object} state
+ * @param {{startDateKey?: string|null, endDateKey?: string|null, now?: Date}} [options]
+ * @returns {{moneyInCents: number, moneyOutCents: number, billsDueCount: number}}
+ */
+function getPeriodSummary(state, { startDateKey = null, endDateKey = null, now = new Date() } = {}) {
+  const periodExpenses = getExpensesForPeriod(state, { period: 'custom', from: startDateKey, to: endDateKey, now });
+  const periodPayments = getBillPaymentsForPeriod(state, { startDateKey, endDateKey });
+  const moneyOutCents = getExpensesTotalCents(periodExpenses) + getBillPaymentsTotalCents(periodPayments);
+
+  const periodReceipts = getIncomeReceiptsForPeriod(state, { startDateKey, endDateKey });
+  const moneyInCents = getIncomeReceiptsTotalCents(periodReceipts);
+
+  const billsDueCount = getAllBills(state).filter((bill) => {
+    if (!bill || !bill.active || bill.paid) return false;
+    if (!bill.dueDate) return true; // no date at all — conservatively always counts, same convention as safe-to-spend/calculation.js
+    const dueKey = getCurrentBillDueDate(bill.dueDate, bill.recurrence, now);
+    if (dueKey == null) return false;
+    if (startDateKey != null && dueKey < startDateKey) return false;
+    if (endDateKey != null && dueKey > endDateKey) return false;
+    return true;
+  }).length;
+
+  return { moneyInCents, moneyOutCents, billsDueCount };
+}
+
+
+// ---- src/ui/components/summary-strip.js ----
+// The summary strip — a compact, lightweight row of stat tiles at the very
+// top of the dashboard, above the Safe-to-Spend hero, so the numbers a
+// user most needs are scannable in under 2 seconds without reading any
+// card. Pure UI composition: every figure here is read from values already
+// computed elsewhere (`getExpensesTotalCents`, `getUpcomingBillsTotalCents`,
+// `getUpcomingBills`, `getAllExpenseDrafts`) — this file does no money
+// arithmetic or date math of its own, same "composition only" rule as
+// src/modules/dashboard/index.js. Deliberately lighter than a `.card` (see
+// `.summary-tile` in components.css) — a glance strip, not another card
+// competing for attention with the hero right below it.
+//
+// Originally: Safe to spend, Bills due, Days left, Inbox items. At the
+// user's explicit request, Safe to spend was replaced with Total expenses
+// (position 1 — Safe to Spend is still the hero's own job, right below
+// this strip, so showing it twice in a row added little), and Days left
+// was replaced with Total bills and moved up to position 2, right after
+// Total expenses — Bills due (the count) and Inbox items shifted down to
+// fill positions 3 and 4 accordingly. `daysUntilPayday` (only ever used
+// for the old "Days left" tile) is still computed by `getSafeToSpend` and
+// still shown nowhere else — same "kept available, not deleted just
+// because a UI stopped using it" treatment `upcomingBillsCents` got
+// before this file existed.
+
+
+function tile({ icon, label, value, color }) {
+  return el('div', { class: 'summary-tile' }, [
+    iconChip(icon, { color, small: true }),
+    el('div', { class: 'summary-tile__text' }, [
+      el('span', { class: 'summary-tile__value' }, value),
+      el('span', { class: 'summary-tile__label' }, label),
+    ]),
+  ]);
+}
+
+/**
+ * @param {object} options
+ * @param {object} options.state
+ */
+function renderSummaryStrip({ state }) {
+  const totalExpensesCents = getExpensesTotalCents(getAllExpenses(state));
+  const totalBillsCents = getUpcomingBillsTotalCents(state);
+  const { totalCount: billsDueCount } = getUpcomingBills(state, { limit: 3 });
+  const inboxCount = getAllExpenseDrafts(state).length;
+
+  return el('div', { class: 'summary-strip' }, [
+    tile({
+      icon: 'receipt',
+      label: 'Total expenses',
+      value: formatCents(totalExpensesCents),
+      color: 'var(--color-accent)',
+    }),
+    tile({
+      icon: 'file-text',
+      label: 'Total bills',
+      value: formatCents(totalBillsCents),
+      color: totalBillsCents > 0 ? 'var(--color-status-caution-text)' : 'var(--color-text-secondary)',
+    }),
+    tile({
+      icon: 'file-text',
+      label: billsDueCount === 1 ? 'Bill due' : 'Bills due',
+      value: String(billsDueCount),
+      color: billsDueCount > 0 ? 'var(--color-status-caution-text)' : 'var(--color-text-secondary)',
+    }),
+    tile({
+      icon: 'zap',
+      label: inboxCount === 1 ? 'Inbox item' : 'Inbox items',
+      value: String(inboxCount),
+      color: inboxCount > 0 ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+    }),
+  ]);
+}
+
+
+// ---- src/ui/components/empty-state.js ----
+// A small, reusable empty-state message. See CLAUDE.md's product
+// discipline notes — an empty state should say plainly what's true
+// ("Nothing planned yet.") rather than leave a blank gap or overstate.
+
+
+/** @param {string} message @returns {HTMLElement} */
+function emptyState(message) {
+  return el('p', { class: 'empty-state' }, message);
+}
+
+
+// ---- src/ui/components/amount-field.js ----
+
+/**
+ * A labeled money input. Free-text (not type="number") so users can type
+ * "$1,200.00" naturally — parsing/validation happens on submit via
+ * core/money.js's parseAmountToCents, not on every keystroke.
+ * @param {string} labelText
+ * @param {{name?: string, valueCents?: number|null}} [options]
+ * @returns {HTMLLabelElement} with `.amountInput` set to the nested <input>
+ */
+function amountField(labelText, { name, valueCents = null } = {}) {
+  const input = el('input', {
+    type: 'text',
+    inputmode: 'decimal',
+    name,
+    class: 'field__input',
+    value: valueCents != null ? centsToDollarString(valueCents) : '',
+    placeholder: '0.00',
+    'aria-label': labelText,
+  });
+  const label = el('label', { class: 'field' }, [el('span', { class: 'field__label' }, labelText), input]);
+  label.amountInput = input;
+  return label;
+}
+
+
+// ---- src/ui/components/money-item.js ----
+
+/**
+ * A single row in a money list (income/bill/planned-expense/expense) —
+ * an optional leading icon chip, title, small meta pieces, and action
+ * buttons.
+ * @param {object} options
+ * @param {string} options.title
+ * @param {(string|HTMLElement|null)[]} [options.meta]
+ * @param {HTMLElement[]} [options.actions]
+ * @param {HTMLElement|null} [options.icon] a pre-built icon chip (see
+ *   src/ui/components/icons.js `iconChip`/`categoryIconChip`) — this file
+ *   stays agnostic about which icon/color a row gets, so it never needs
+ *   to know about categories or list types itself.
+ */
+function renderMoneyItem({ title, meta = [], actions = [], icon = null }) {
+  const metaEls = meta.filter(Boolean).map((m) => (typeof m === 'string' ? el('span', { class: 'money-item__meta-text' }, m) : m));
+  return el(
+    'li',
+    { class: 'money-item' },
+    [
+      icon,
+      el('div', { class: 'money-item__body' }, [
+        el('span', { class: 'money-item__title' }, title),
+        el('div', { class: 'money-item__meta' }, metaEls),
+      ]),
+      el('div', { class: 'money-item__actions' }, actions),
+    ].filter(Boolean)
+  );
+}
+
+
+// ---- src/ui/components/expenses-section.js ----
+// The Expenses section (Phase 5 — Expense Tracking): a fast add form
+// (only amount is required) and a compact recent-expenses list with
+// edit/delete — not a full accounting ledger. Categories have sensible
+// defaults but are freely editable via a <datalist>, not a locked enum.
+
+
+// Which expense row (if any) is being edited inline — transient UI state,
+// deliberately outside the store (see docs/ARCHITECTURE.md §4).
+let editingExpenseId = null;
+
+/**
+ * @param {string|null|undefined} value
+ * @param {string[]} knownCategories datalist suggestions — every category
+ *   currently "in play" (see getKnownCategories), not a locked list; the
+ *   field stays free text, so typing anything else introduces a new
+ *   category, known everywhere from then on.
+ * @returns {HTMLLabelElement} with `.categoryInput` set to the nested <input>
+ */
+function categoryField(value, knownCategories) {
+  const input = el('input', { type: 'text', name: 'category', class: 'field__input', list: 'expense-categories', value: value || '', placeholder: 'Optional' });
+  const datalist = el(
+    'datalist',
+    { id: 'expense-categories' },
+    knownCategories.map((category) => el('option', { value: category }))
+  );
+  const label = el('label', { class: 'field' }, [el('span', { class: 'field__label' }, 'Category'), input, datalist]);
+  label.categoryInput = input;
+  return label;
+}
+
+function dateField(labelText, { name, value }) {
+  const input = el('input', { type: 'date', name, value: value || '', class: 'field__input' });
+  return el('label', { class: 'field' }, [el('span', { class: 'field__label' }, labelText), input]);
+}
+
+function expenseTextField(labelText, { name, value, placeholder }) {
+  const input = el('input', { type: 'text', name, value: value || '', class: 'field__input', placeholder });
+  return el('label', { class: 'field' }, [el('span', { class: 'field__label' }, labelText), input]);
+}
+
+/**
+ * The fast-add / edit form: Amount + Category up front, everything else
+ * (description/date/notes) behind "+ More options" — Phase 7's explicit
+ * fast-path is "+ Add Expense → Amount → Category → Save". Editing starts
+ * expanded, since there's nothing to hide once values already exist.
+ * Exported for reuse by the hero's inline "+ Add expense" form
+ * (src/ui/components/safe-to-spend-hero.js).
+ * @param {object} options
+ * @param {object} options.state used only to build the category field's
+ *   suggestions (`getKnownCategories`) — this form reads no other state.
+ * @param {string|null} [options.initialDescription] prefills the
+ *   Description field (behind "+ More options") without triggering edit
+ *   mode — used by "Convert to expense" (src/ui/components/
+ *   inbox-section.js) to seed a Brain Dump note's text as the new
+ *   expense's description while keeping the create-mode "+ Add expense"
+ *   button/copy, unlike passing a partial `expense` would. Forces "+ More
+ *   options" open too, same as edit mode, so the prefilled value is
+ *   actually visible rather than hidden behind a collapsed toggle.
+ */
+function renderExpenseForm({ state, expense = null, initialDescription = null, onSubmit, onCancel }) {
+  const isEdit = expense != null;
+  const amount = amountField('Amount', { name: 'amountCents', valueCents: expense?.amountCents ?? null });
+  const category = categoryField(expense?.category, getKnownCategories(state));
+  const error = el('p', { class: 'field__error', role: 'alert' });
+
+  const more = renderMoreOptions(
+    () => [
+      expenseTextField('Description', { name: 'description', value: expense?.description ?? initialDescription, placeholder: 'Optional' }),
+      dateField('Date', { name: 'date', value: expense?.date }),
+      expenseTextField('Notes', { name: 'notes', value: expense?.notes, placeholder: 'Optional' }),
+    ],
+    { startExpanded: isEdit || initialDescription != null }
+  );
+
+  const form = el('form', { class: 'money-form' }, [
+    amount,
+    category,
+    more.toggle,
+    more.details,
+    error,
+    el(
+      'div',
+      { class: 'money-form__buttons' },
+      [
+        el('button', { type: 'submit', class: 'btn btn--primary btn--small' }, isEdit ? 'Save' : [icon('receipt'), 'Add expense']),
+        isEdit ? el('button', { type: 'button', class: 'btn btn--secondary btn--small', onclick: () => onCancel() }, 'Cancel') : null,
+      ].filter(Boolean)
+    ),
+  ]);
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const amountCents = parseAmountToCents(amount.amountInput.value);
+    if (amountCents == null) {
+      error.textContent = 'Enter an amount of 0 or more, like 12.50.';
+      return;
+    }
+    error.textContent = '';
+
+    const formData = new FormData(form);
+    const payload = {
+      amountCents,
+      category: formData.get('category')?.trim() || null,
+      description: formData.get('description')?.trim() || null,
+      notes: formData.get('notes')?.trim() || null,
+    };
+    const date = formData.get('date');
+    if (date) payload.date = date; // omit when blank so an edit never clobbers it with nothing
+
+    onSubmit(payload);
+    if (!isEdit) {
+      amount.amountInput.value = '';
+      category.categoryInput.value = '';
+    }
+  });
+
+  return form;
+}
+
+/**
+ * @param {object} options
+ * @param {object} options.state
+ * @param {Function} options.dispatch
+ * @param {() => void} [options.requestRender]
+ * @param {{period: string, from: string|null, to: string|null}} options.period
+ *   the header bar's global period selector (src/ui/components/
+ *   period-selector.js) — the single source of truth for which stretch of
+ *   time this list shows; no per-card filter here anymore.
+ */
+function renderExpensesSection({ state, dispatch, requestRender, period }) {
+  const expenses = getExpensesForPeriod(state, { period: period.period, from: period.from, to: period.to });
+
+  const items = expenses.map((expense) => {
+    if (expense.id === editingExpenseId) {
+      return el('li', { class: 'money-item money-item--editing' }, [
+        renderExpenseForm({
+          state,
+          expense,
+          onSubmit: (changes) => {
+            dispatch(updateExpenseAction(expense.id, changes, { now: new Date() }));
+            editingExpenseId = null;
+            requestRender?.();
+          },
+          onCancel: () => {
+            editingExpenseId = null;
+            requestRender?.();
+          },
+        }),
+      ]);
+    }
+    return renderMoneyItem({
+      icon: categoryIconChip(expense.category),
+      title: expense.description || expense.category || 'Expense',
+      meta: [formatCents(expense.amountCents), expense.category, `${expense.date}`],
+      actions: [
+        el(
+          'button',
+          {
+            type: 'button',
+            class: 'btn btn--secondary btn--small',
+            onclick: () => {
+              editingExpenseId = expense.id;
+              requestRender?.();
+            },
+          },
+          'Edit'
+        ),
+        el(
+          'button',
+          {
+            type: 'button',
+            class: 'btn btn--secondary btn--small',
+            onclick: () => {
+              if (window.confirm('Delete this expense? Its amount will be added back to your current balance.')) {
+                dispatch(deleteExpenseAction(expense.id));
+              }
+            },
+          },
+          'Delete'
+        ),
+      ],
+    });
+  });
+
+  const list = expenses.length > 0 ? el('ul', { class: 'money-list' }, items) : emptyState('No spending in that period.');
+
+  // Always shown — the header bar's period is always some explicit
+  // selection now (no more implicit "Recent" default), so a total is
+  // always meaningful.
+  const total =
+    expenses.length > 0
+      ? el('p', { class: 'expenses-filter__total' }, `Total: ${formatCents(getExpensesTotalCents(expenses))} · ${expenses.length} expense${expenses.length === 1 ? '' : 's'}`)
+      : null;
+
+  // No add-expense form here — that's the hero's job now (its own inline
+  // "+ Add expense" button, src/ui/components/safe-to-spend-hero.js), and
+  // no per-card period filter — that's the header bar's job now
+  // (src/ui/components/period-selector.js). This section is purely the
+  // expenses list + inline edit/delete for whatever period is selected.
+  return el(
+    'section',
+    { class: 'card', 'aria-labelledby': 'expenses-heading' },
+    [sectionHeading('receipt', 'Expenses', 'expenses-heading'), total, list].filter(Boolean)
+  );
+}
+
+
 // ---- src/ui/components/safe-to-spend-hero.js ----
 // The hero card — the single most important thing on the dashboard
 // (Phase 4 "primary objective": understand financial position in ~5
@@ -3868,13 +5356,47 @@ function renderSafeToSpendHero(result, { state, dispatch, requestRender } = {}) 
 
 // ---- src/ui/components/single-value-section.js ----
 
-// Whether the "edit total directly" popup (additive mode only — see
-// `onEditTotal` below) is open — transient UI state, deliberately outside
-// the store (see docs/ARCHITECTURE.md §4).
-let editTotalFormOpen = false;
+// Which section's "edit" popup (additive mode's `onEditTotal`, or
+// `editOnly` mode — see below) is open, if any — transient UI state,
+// deliberately outside the store (see docs/ARCHITECTURE.md §4). Holds the
+// open section's `id`, not a plain boolean: this component now has two
+// simultaneous callers that can each show this popup (Savings,
+// Current Balance), and a single shared boolean would let one card's
+// popup incorrectly "leak" open on the other the moment both had ever
+// been opened in the same session — id-scoping keeps each instance's
+// popup independent, same as e.g. inbox-section.js's `convertingDraftId`
+// tracking which specific draft is mid-conversion rather than a bare flag.
+let editPopupOpenId = null;
 
-/** The small popup opened by the edit-total pencil icon (additive mode) — sets the total directly, unlike the card's own form which adds to it. */
-function renderEditTotalForm({ title, valueCents, onSave }) {
+/**
+ * A small popup form that sets a single money value directly — originally
+ * just Savings' "edit total" pencil icon's popup, generalized (still
+ * backward-compatible in every default) so `renderSingleValueSection`'s
+ * own `editOnly` mode below can reuse the exact same popup-form pattern
+ * for Current Balance's pencil instead of duplicating this boilerplate —
+ * same reuse precedent as `renderExpenseForm` being shared across
+ * multiple callers (docs/ARCHITECTURE.md §7 doesn't restrict this; only
+ * reaching into another module's *data* internals is off-limits, not a
+ * plain shared UI helper).
+ * @param {object} options
+ * @param {string} options.title
+ * @param {number} options.valueCents
+ * @param {(input: string) => number|null} [options.parse] defaults to
+ *   non-negative parsing (Savings); pass `parseBalanceToCents` for a value
+ *   that can legitimately go negative (Current Balance).
+ * @param {string} [options.errorText]
+ * @param {string|null} [options.hint] shown under the field if given;
+ *   omit (or pass `null`) for none.
+ * @param {(cents: number) => void} options.onSave
+ */
+function renderEditTotalForm({
+  title,
+  valueCents,
+  parse = parseAmountToCents,
+  errorText = 'Enter an amount of 0 or more, like 150.00.',
+  hint = 'This replaces the total directly — for fixing a mistake or reconciling against a real account, not a regular contribution.',
+  onSave,
+}) {
   const input = el('input', {
     type: 'text',
     inputmode: 'decimal',
@@ -3888,15 +5410,15 @@ function renderEditTotalForm({ title, valueCents, onSave }) {
   const form = el('form', { class: 'money-form' }, [
     label,
     error,
-    el('p', { class: 'field__hint' }, 'This replaces the total directly — for fixing a mistake or reconciling against a real account, not a regular contribution.'),
+    hint ? el('p', { class: 'field__hint' }, hint) : null,
     el('div', { class: 'money-form__buttons' }, [el('button', { type: 'submit', class: 'btn btn--primary btn--small' }, 'Save')]),
-  ]);
+  ].filter(Boolean));
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();
-    const cents = parseAmountToCents(input.value);
+    const cents = parse(input.value);
     if (cents == null) {
-      error.textContent = 'Enter an amount of 0 or more, like 150.00.';
+      error.textContent = errorText;
       return;
     }
     error.textContent = '';
@@ -3907,10 +5429,17 @@ function renderEditTotalForm({ title, valueCents, onSave }) {
 }
 
 /**
- * A card section for a single money figure — Current Balance and Savings
- * (Phase 2 §1/§5). Current Balance briefly lived as a hero subtitle
- * during the dashboard redesign, then moved back to its own standalone
- * card at the user's request — see CLAUDE.md "Current status".
+ * A card section for a single money figure — Savings (Phase 2 §5) and
+ * Current Balance (src/ui/screens/dashboard.js) are the current callers.
+ * Current Balance's own history is longer than that sentence suggests: it
+ * briefly lived as a hero subtitle, then got its own standalone card
+ * (this component), then was folded into the merged "Right now" card
+ * (src/ui/components/right-now-section.js) alongside Money in/out, then
+ * was split back out into its own standalone card again — this
+ * component, unchanged — at the user's later request. See CLAUDE.md
+ * "Current status" for the full account. Kept general-purpose, not
+ * hardcoded to either caller, precisely because its shape keeps getting
+ * reused as the layout evolves.
  * @param {object} options
  * @param {string} options.id used for the heading id and input name
  * @param {string} options.title
@@ -3934,266 +5463,164 @@ function renderEditTotalForm({ title, valueCents, onSave }) {
  *   (`setSavingsAllocationAction`), for correcting a mistake or
  *   reconciling against a real account, since the card's own form can
  *   only add.
+ * @param {boolean} [options.editOnly] when true, skips the inline
+ *   field/button form entirely — the card shows only "Currently: $X"
+ *   plus a pencil icon that opens a popup (`renderEditTotalForm`) to
+ *   change it, the same "no field or Save button visible until you ask
+ *   for it" affordance `onEditTotal` gives Savings, but as the *only* way
+ *   to edit rather than a secondary one alongside an "add" form. Current
+ *   Balance uses this — it was never additive, so there's no separate add
+ *   form for a pencil to be an alternative *to*; at the user's request the
+ *   inline form was removed outright rather than kept as a redundant
+ *   second way to do the same thing. Mutually exclusive with `additive`/
+ *   `onEditTotal` in practice (nothing currently combines them, and
+ *   `editOnly` takes precedence if it somehow happened).
  * @returns {HTMLElement}
  */
-function renderSingleValueSection({ id, title, description, valueCents, onSave, allowNegative = false, icon = 'wallet', additive = false, onEditTotal, requestRender }) {
-  const field = amountField(additive ? 'Amount to add' : title, { name: id, valueCents: additive ? null : valueCents });
-  const error = el('p', { class: 'field__error', role: 'alert' });
-  const success = el('p', { class: 'field__success', role: 'status' });
+function renderSingleValueSection({ id, title, description, valueCents, onSave, allowNegative = false, icon = 'wallet', additive = false, onEditTotal, editOnly = false, requestRender }) {
   const parse = allowNegative ? parseBalanceToCents : parseAmountToCents;
   const errorText = allowNegative ? 'Enter a valid amount, like 150.00 or -40.00.' : 'Enter an amount of 0 or more, like 150.00.';
 
   const currentLine = [el('span', {}, `${additive ? 'Currently saved' : 'Currently'}: ${formatCents(valueCents)}`)];
 
+  const showPencil = editOnly || (additive && onEditTotal);
   let popup = null;
-  if (additive && onEditTotal) {
-    const closeEditTotal = () => {
-      editTotalFormOpen = false;
+  if (showPencil) {
+    const pencilLabel = editOnly ? `Edit ${title.toLowerCase()}` : `Edit ${title.toLowerCase()} total directly`;
+    const popupTitle = editOnly ? `Edit ${title.toLowerCase()}` : `Edit ${title.toLowerCase()} total`;
+    const saveHandler = editOnly ? onSave : onEditTotal;
+
+    const closeEditPopup = () => {
+      editPopupOpenId = null;
       requestRender?.();
     };
     currentLine.push(
       iconButton(
         'edit',
-        `Edit ${title.toLowerCase()} total directly`,
+        pencilLabel,
         () => {
-          editTotalFormOpen = true;
+          editPopupOpenId = id;
           requestRender?.();
         },
         { tone: 'neutral' }
       )
     );
-    if (editTotalFormOpen) {
+    if (editPopupOpenId === id) {
       const editForm = renderEditTotalForm({
-        title: `${title} total`,
+        title: editOnly ? title : `${title} total`,
         valueCents,
+        parse,
+        errorText,
+        hint: editOnly ? null : undefined, // undefined keeps renderEditTotalForm's own default (additive/Savings) hint text
         onSave: (cents) => {
-          onEditTotal(cents);
-          closeEditTotal();
+          saveHandler(cents);
+          closeEditPopup();
         },
       });
-      popup = renderPopup({ titleId: `${id}-edit-total-heading`, title: `Edit ${title.toLowerCase()} total`, body: editForm, onClose: closeEditTotal });
+      popup = renderPopup({ titleId: `${id}-edit-total-heading`, title: popupTitle, body: editForm, onClose: closeEditPopup });
     }
   }
 
-  const form = el('form', { class: 'single-value-form' }, [
-    el('p', { class: 'single-value-form__current' }, currentLine),
-    field,
-    error,
-    success,
-    el('button', { type: 'submit', class: 'btn btn--primary btn--small' }, additive ? '+ Add' : 'Save'),
-  ]);
+  let form;
+  if (editOnly) {
+    // No inline field/button at all — the popup above is the only way to
+    // change this value (see `editOnly`'s doc comment).
+    form = el('p', { class: 'single-value-form__current' }, currentLine);
+  } else {
+    const field = amountField(additive ? 'Amount to add' : title, { name: id, valueCents: additive ? null : valueCents });
+    const error = el('p', { class: 'field__error', role: 'alert' });
+    const success = el('p', { class: 'field__success', role: 'status' });
 
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const cents = parse(field.amountInput.value);
-    if (cents == null) {
-      error.textContent = errorText;
-      return;
-    }
-    error.textContent = '';
-    onSave(cents);
-    // The card re-renders with the new "Currently: $X" the moment the
-    // store updates (see src/ui/shell.js) — this just confirms the click
-    // itself registered, since that re-render replaces this exact element.
-    success.textContent = additive ? `Added ${formatCents(cents)}.` : 'Saved.';
-  });
+    form = el('form', { class: 'single-value-form' }, [
+      el('p', { class: 'single-value-form__current' }, currentLine),
+      field,
+      error,
+      success,
+      el('button', { type: 'submit', class: 'btn btn--primary btn--small' }, additive ? '+ Add' : 'Save'),
+    ]);
+
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const cents = parse(field.amountInput.value);
+      if (cents == null) {
+        error.textContent = errorText;
+        return;
+      }
+      error.textContent = '';
+      onSave(cents);
+      // The card re-renders with the new "Currently: $X" the moment the
+      // store updates (see src/ui/shell.js) — this just confirms the
+      // click itself registered, since that re-render replaces this exact
+      // element.
+      success.textContent = additive ? `Added ${formatCents(cents)}.` : 'Saved.';
+    });
+  }
 
   const headChildren = [sectionHeading(icon, title, id)];
   if (description) headChildren.push(el('p', { class: 'section-description' }, description));
 
-  return el('section', { class: 'card', 'aria-labelledby': id }, [...headChildren, form, popup].filter(Boolean));
+  // `.card--quiet` — a side-column "at a glance" figure, not primary
+  // content, so it gets the same reduced-visual-weight treatment as its
+  // side-column neighbors (the period card, Upcoming Income, Bills Due
+  // Soon) instead of the full-weight `.card` styling Categories/Expenses
+  // use — see the `.card--quiet` comment in components.css.
+  return el('section', { class: 'card card--quiet', 'aria-labelledby': id }, [...headChildren, form, popup].filter(Boolean));
 }
 
 
-// ---- src/ui/components/period-summary.js ----
-// "This Period" — a compact glance at money in / money out / bills due,
-// for whatever period is selected in the header bar's global period
-// selector (src/ui/components/period-selector.js). Every figure comes
-// from src/modules/dashboard/index.js `getPeriodSummary` — this file only
-// formats and lays them out, it never computes a total itself. Never used
-// by Safe-to-Spend or Current Balance, which are always "right now"
-// snapshots regardless of the selected period.
+// ---- src/ui/components/right-now-section.js ----
+// The period card — Money in / Money out for whatever period is selected
+// in the header bar's global period selector, titled with that period's
+// own label (e.g. "This month", "This week" — period-selector.js's
+// `getPeriodLabel`, threaded down from dashboard.js) instead of a static
+// heading. Both figures come from src/modules/dashboard/index.js
+// `getPeriodSummary`, unchanged.
+//
+// History worth knowing, since the file/function names below ("right
+// now") no longer describe what's here, same as the CSS classes they
+// render with (`.right-now*`, still named after this same lineage — see
+// components.css's own comment on that): this used to be two separate
+// cards ("This Period" + "Current Balance"), merged into one "Right Now"
+// card (Current balance + Money in + Money out, three rows) at the
+// user's request to fix inconsistent card grouping. The heading was then
+// changed from the static "Right now" to the selected period's label.
+// Finally, Current Balance was split back out into its own standalone
+// card (src/ui/screens/dashboard.js, reusing the unmodified
+// single-value-section.js component it always used before the merge) —
+// at that point this card no longer contains anything that isn't
+// period-scoped, so "right now" stopped fitting, but the file wasn't
+// renamed for it (same call already made for the CSS classes: not worth
+// the churn for an internal identifier with no user-visible effect). See
+// CLAUDE.md "Current status" for the full account.
+// This card still deliberately does NOT show a "Bills due" row (the old
+// "This Period" card's third row) — that would duplicate the Bills Due
+// Soon card sitting directly below it, and the summary strip above the
+// hero already surfaces a bills-due count too.
 
 
-function periodRow(iconName, label, valueText, color) {
-  return el('div', { class: 'period-summary__row' }, [
+function row(iconName, label, valueText, color) {
+  return el('div', { class: 'right-now__row' }, [
     iconChip(iconName, { color, small: true }),
-    el('div', { class: 'period-summary__text' }, [
-      el('span', { class: 'period-summary__label' }, label),
-      el('span', { class: 'period-summary__value' }, valueText),
-    ]),
+    el('div', { class: 'right-now__text' }, [el('span', { class: 'right-now__label' }, label), el('span', { class: 'right-now__value' }, valueText)]),
   ]);
 }
 
 /**
- * @param {ReturnType<typeof import('../../modules/dashboard/index.js').getPeriodSummary>} summary
- *   "Money in" means a schedule projection for a bounded period (This
- *   week/month/etc.) but a real historical total (confirmed IncomeReceipts)
- *   for an unbounded one ("All time") — see getPeriodSummary's doc
- *   comment for the full reasoning. Same label either way; both are
- *   genuinely "money in," just derived differently depending on whether
- *   there's a concrete window to project across.
+ * @param {object} options
+ * @param {ReturnType<typeof import('../../modules/dashboard/index.js').getPeriodSummary>} options.periodSummary
+ * @param {string} options.periodLabel the header bar's selected period,
+ *   already formatted (period-selector.js's `getPeriodLabel`) — this
+ *   card's heading.
  */
-function renderPeriodSummary(summary) {
-  return el('section', { class: 'card card--quiet', 'aria-labelledby': 'period-summary-heading' }, [
-    sectionHeading('calendar', 'This period', 'period-summary-heading'),
-    el('div', { class: 'period-summary' }, [
-      periodRow('trending-up', 'Money in', formatCents(summary.moneyInCents), 'var(--color-status-positive-text)'),
-      periodRow('receipt', 'Money out', formatCents(summary.moneyOutCents), 'var(--color-accent)'),
-      periodRow('file-text', 'Bills due', String(summary.billsDueCount), summary.billsDueCount > 0 ? 'var(--color-status-caution-text)' : 'var(--color-text-secondary)'),
-    ]),
+function renderRightNowSection({ periodSummary, periodLabel }) {
+  const moneyInRow = row('trending-up', 'Money in', formatCents(periodSummary.moneyInCents), 'var(--color-status-positive-text)');
+  const moneyOutRow = row('receipt', 'Money out', formatCents(periodSummary.moneyOutCents), 'var(--color-accent)');
+
+  return el('section', { class: 'card card--quiet', 'aria-labelledby': 'right-now-heading' }, [
+    sectionHeading('calendar', periodLabel, 'right-now-heading'),
+    el('div', { class: 'right-now' }, [moneyInRow, moneyOutRow]),
   ]);
 }
-
-
-// ---- src/modules/bills/actions.js ----
-// Action creators for the Bills module. See src/modules/incomes/actions.js
-// for the id/timestamp-in-action-creator convention this follows.
-
-
-/**
- * @param {{name: string, amountCents: number, dueDate?: string, recurrence?: string}} input
- * @param {{now?: Date}} [options]
- */
-function createBillAction(input, { now = new Date() } = {}) {
-  const timestamp = now.toISOString();
-  return {
-    type: 'bills/create',
-    bill: {
-      id: createId('b'),
-      name: input?.name ?? '',
-      amountCents: input?.amountCents,
-      dueDate: input?.dueDate || getLocalDateKey(now),
-      recurrence: input?.recurrence || 'one-time',
-      active: true,
-      paid: false,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    },
-  };
-}
-
-function updateBillAction(id, changes, { now = new Date() } = {}) {
-  return { type: 'bills/update', id, changes, now: now.toISOString() };
-}
-
-function deleteBillAction(id) {
-  return { type: 'bills/delete', id };
-}
-
-function toggleBillActiveAction(id, { now = new Date() } = {}) {
-  return { type: 'bills/toggle', id, field: 'active', now: now.toISOString() };
-}
-
-/** Mark a bill paid/unpaid (Phase 2 §3). */
-function toggleBillPaidAction(id, { now = new Date() } = {}) {
-  return { type: 'bills/toggle', id, field: 'paid', now: now.toISOString() };
-}
-
-
-// ---- src/modules/bills/selectors.js ----
-function getAllBills(state) {
-  return state.bills ?? [];
-}
-
-function getUnpaidBills(state) {
-  return getAllBills(state).filter((bill) => !bill.paid);
-}
-
-
-// ---- src/modules/bills/reducer.js ----
-
-const BILL_RECURRENCES = ['one-time', 'weekly', 'monthly'];
-const BILL_EDITABLE_FIELDS = ['name', 'amountCents', 'dueDate', 'recurrence'];
-
-function validateNewBill(candidate) {
-  if (!candidate) return null;
-  const name = typeof candidate.name === 'string' ? candidate.name.trim() : '';
-  if (!name || !isValidAmountCents(candidate.amountCents)) return null;
-  const recurrence = BILL_RECURRENCES.includes(candidate.recurrence) ? candidate.recurrence : 'one-time';
-  return { ...candidate, name, recurrence };
-}
-
-function sanitizeBillChanges(changes = {}) {
-  const sanitized = {};
-  for (const field of BILL_EDITABLE_FIELDS) {
-    if (field in changes) sanitized[field] = changes[field];
-  }
-  if ('name' in sanitized) {
-    const trimmed = typeof sanitized.name === 'string' ? sanitized.name.trim() : '';
-    if (trimmed) sanitized.name = trimmed;
-    else delete sanitized.name;
-  }
-  if ('amountCents' in sanitized && !isValidAmountCents(sanitized.amountCents)) {
-    delete sanitized.amountCents;
-  }
-  if ('recurrence' in sanitized && !BILL_RECURRENCES.includes(sanitized.recurrence)) {
-    delete sanitized.recurrence;
-  }
-  return sanitized;
-}
-
-const billsReducer = createListReducer({
-  actionPrefix: 'bills',
-  entityKey: 'bill',
-  validateNew: validateNewBill,
-  sanitizeChanges: sanitizeBillChanges,
-});
-
-
-// ---- src/modules/bills/balance-effect.js ----
-// How marking a Bill paid/unpaid affects the Current Balance checkpoint.
-// See docs/DATA-MODEL.md "Current Balance model" — mirrors src/modules/
-// expenses/balance-effect.js and src/modules/incomes/balance-effect.js's
-// pattern exactly (a pure function deciding *how much* to adjust, applied
-// atomically by src/main.js's rootReducer), but for the single `bills/
-// toggle` action with `field: 'paid'`. Ordinary create/update/delete and
-// the `field: 'active'` toggle never touch the balance, same as before
-// this existed.
-//
-// Why this exists: originally added to fix a real reported bug, back when
-// `sumCommittedBills` (src/modules/safe-to-spend/calculation.js) excluded
-// paid bills from a subtracted `upcomingBillsCents` term — without this
-// effect, nothing ever actually left Current Balance when a bill was
-// marked paid, so Safe-to-Spend visibly went *up* by that amount, as if
-// the money had "come back." As of a later, explicit user request, bills
-// no longer subtract from Safe-to-Spend at all while unpaid (see
-// docs/SAFE-TO-SPEND.md §2/§7) — so this debit is no longer "canceling
-// out" an earlier subtraction, it's the *only* time a bill's amount ever
-// reduces Safe-to-Spend, the first and only time it counts. Un-marking a
-// bill as paid (toggling back to unpaid) symmetrically refunds it,
-// mirroring an Expense delete.
-//
-// Deliberately narrower than Expenses, same simplification already
-// documented for Income: editing a bill's amount or deleting it after
-// it's been marked paid does not retroactively adjust the balance. Also
-// worth knowing: if a payment is *both* marked paid here *and* separately
-// logged as an Expense, that's a double deduction — this app doesn't link
-// the two, consistent with `docs/PRODUCT.md` §5's "not a full accounting/
-// double-entry bookkeeping system" non-goal. Use one or the other for a
-// given real-world payment, not both.
-
-
-/**
- * @param {{type: string, id?: string, field?: string}} action
- * @param {Array} prevBills the `bills` slice before this action
- * @param {Array} nextBills the `bills` slice after this action
- * @returns {number} signed cents to add to currentBalanceCents (negative = paid, positive = un-marked/refunded)
- */
-function computeBillBalanceDelta(action, prevBills, nextBills) {
-  if (action.type !== 'bills/toggle' || action.field !== 'paid') return 0;
-  if (nextBills === prevBills) return 0; // the reducer no-op'd (unknown id) — nothing to apply
-
-  const after = nextBills.find((bill) => bill.id === action.id);
-  if (!after || !isValidAmountCents(after.amountCents)) return 0;
-
-  return after.paid ? -after.amountCents : after.amountCents;
-}
-
-
-// ---- src/modules/bills/index.js ----
-// The Bills module's public interface. See docs/ARCHITECTURE.md §7.
-
 
 
 // ---- src/ui/components/bills-section.js ----
@@ -4286,605 +5713,6 @@ function renderBillForm({ bill = null, onSubmit, onCancel }) {
   });
 
   return form;
-}
-
-
-// ---- src/modules/planned-expenses/actions.js ----
-// Action creators for the Planned Expenses module. See
-// src/modules/incomes/actions.js for the id/timestamp convention.
-
-
-/**
- * @param {{name: string, amountCents: number, plannedDate?: string, category?: string, notes?: string}} input
- * @param {{now?: Date}} [options]
- */
-function createPlannedExpenseAction(input, { now = new Date() } = {}) {
-  const timestamp = now.toISOString();
-  return {
-    type: 'plannedExpenses/create',
-    plannedExpense: {
-      id: createId('pe'),
-      name: input?.name ?? '',
-      amountCents: input?.amountCents,
-      plannedDate: input?.plannedDate || null,
-      category: input?.category || null,
-      notes: input?.notes || null,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    },
-  };
-}
-
-function updatePlannedExpenseAction(id, changes, { now = new Date() } = {}) {
-  return { type: 'plannedExpenses/update', id, changes, now: now.toISOString() };
-}
-
-function deletePlannedExpenseAction(id) {
-  return { type: 'plannedExpenses/delete', id };
-}
-
-
-// ---- src/modules/planned-expenses/selectors.js ----
-function getAllPlannedExpenses(state) {
-  return state.plannedExpenses ?? [];
-}
-
-
-// ---- src/modules/planned-expenses/reducer.js ----
-
-const PLANNED_EXPENSE_EDITABLE_FIELDS = ['name', 'amountCents', 'plannedDate', 'category', 'notes'];
-
-function validateNewPlannedExpense(candidate) {
-  if (!candidate) return null;
-  const name = typeof candidate.name === 'string' ? candidate.name.trim() : '';
-  if (!name || !isValidAmountCents(candidate.amountCents)) return null;
-  return { ...candidate, name };
-}
-
-function sanitizePlannedExpenseChanges(changes = {}) {
-  const sanitized = {};
-  for (const field of PLANNED_EXPENSE_EDITABLE_FIELDS) {
-    if (field in changes) sanitized[field] = changes[field];
-  }
-  if ('name' in sanitized) {
-    const trimmed = typeof sanitized.name === 'string' ? sanitized.name.trim() : '';
-    if (trimmed) sanitized.name = trimmed;
-    else delete sanitized.name;
-  }
-  if ('amountCents' in sanitized && !isValidAmountCents(sanitized.amountCents)) {
-    delete sanitized.amountCents;
-  }
-  return sanitized;
-}
-
-const plannedExpensesReducer = createListReducer({
-  actionPrefix: 'plannedExpenses',
-  entityKey: 'plannedExpense',
-  validateNew: validateNewPlannedExpense,
-  sanitizeChanges: sanitizePlannedExpenseChanges,
-});
-
-
-// ---- src/modules/planned-expenses/index.js ----
-// The Planned Expenses module's public interface. See docs/ARCHITECTURE.md §7.
-
-
-
-// ---- src/modules/incomes/actions.js ----
-// Action creators for the Incomes module. Non-deterministic values (id,
-// timestamps) are generated here, at dispatch time, so the reducer stays
-// pure. See docs/ARCHITECTURE.md §4.
-
-
-/**
- * @param {{name: string, amountCents: number, frequency?: string, nextDate?: string}} input
- * @param {{now?: Date}} [options]
- */
-function createIncomeAction(input, { now = new Date() } = {}) {
-  const timestamp = now.toISOString();
-  return {
-    type: 'incomes/create',
-    income: {
-      id: createId('inc'),
-      name: input?.name ?? '',
-      amountCents: input?.amountCents,
-      frequency: input?.frequency || 'one-time',
-      nextDate: input?.nextDate || getLocalDateKey(now),
-      active: true,
-      received: false,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    },
-  };
-}
-
-function updateIncomeAction(id, changes, { now = new Date() } = {}) {
-  return { type: 'incomes/update', id, changes, now: now.toISOString() };
-}
-
-function deleteIncomeAction(id) {
-  return { type: 'incomes/delete', id };
-}
-
-/** Activate/deactivate recurring income without deleting it (Phase 2 §2). */
-function toggleIncomeActiveAction(id, { now = new Date() } = {}) {
-  return { type: 'incomes/toggle', id, field: 'active', now: now.toISOString() };
-}
-
-/**
- * Confirms an income actually arrived — the moment it credits Current
- * Balance (see docs/DATA-MODEL.md "Current Balance model"). A one-time
- * income is marked `received: true` (a durable, terminal state — there's
- * no next occurrence). A recurring income instead advances `nextDate` to
- * its next cycle, becoming "upcoming" again rather than staying
- * permanently marked — see src/modules/incomes/reducer.js.
- */
-function markIncomeReceivedAction(id, { now = new Date() } = {}) {
-  return { type: 'incomes/mark-received', id, now: now.toISOString() };
-}
-
-
-// ---- src/modules/incomes/selectors.js ----
-function getAllIncomes(state) {
-  return state.incomes ?? [];
-}
-
-function getActiveIncomes(state) {
-  return getAllIncomes(state).filter((income) => income.active);
-}
-
-/**
- * Active incomes not yet confirmed received — every recurring income
- * (which becomes "unreceived" again for its new cycle the moment
- * `nextDate` advances, see reducer.js), plus a one-time income only until
- * it's actually marked received.
- */
-function getUnreceivedIncomes(state) {
-  return getActiveIncomes(state).filter((income) => !(income.frequency === 'one-time' && income.received));
-}
-
-
-// ---- src/modules/incomes/reducer.js ----
-
-const INCOME_FREQUENCIES = ['one-time', 'weekly', 'biweekly', 'monthly'];
-const INCOME_EDITABLE_FIELDS = ['name', 'amountCents', 'frequency', 'nextDate'];
-
-function validateNewIncome(candidate) {
-  if (!candidate) return null;
-  const name = typeof candidate.name === 'string' ? candidate.name.trim() : '';
-  if (!name || !isValidAmountCents(candidate.amountCents)) return null;
-  const frequency = INCOME_FREQUENCIES.includes(candidate.frequency) ? candidate.frequency : 'one-time';
-  return { ...candidate, name, frequency };
-}
-
-function sanitizeIncomeChanges(changes = {}) {
-  const sanitized = {};
-  for (const field of INCOME_EDITABLE_FIELDS) {
-    if (field in changes) sanitized[field] = changes[field];
-  }
-  if ('name' in sanitized) {
-    const trimmed = typeof sanitized.name === 'string' ? sanitized.name.trim() : '';
-    if (trimmed) sanitized.name = trimmed;
-    else delete sanitized.name;
-  }
-  if ('amountCents' in sanitized && !isValidAmountCents(sanitized.amountCents)) {
-    delete sanitized.amountCents;
-  }
-  if ('frequency' in sanitized && !INCOME_FREQUENCIES.includes(sanitized.frequency)) {
-    delete sanitized.frequency;
-  }
-  return sanitized;
-}
-
-const baseIncomesReducer = createListReducer({
-  actionPrefix: 'incomes',
-  entityKey: 'income',
-  validateNew: validateNewIncome,
-  sanitizeChanges: sanitizeIncomeChanges,
-});
-
-/**
- * Wraps the generic list reducer with one bespoke case:
- * `incomes/mark-received` isn't a plain field toggle (see
- * src/modules/incomes/actions.js `markIncomeReceivedAction`) — a one-time
- * income becomes permanently `received: true`, while a recurring income's
- * `nextDate` advances to its next cycle instead, so it never gets
- * permanently "stuck" as received. The actual Current Balance credit is a
- * separate cross-slice effect (src/modules/incomes/balance-effect.js),
- * applied atomically by src/main.js's rootReducer, mirroring how Expenses
- * affect the balance.
- */
-function incomesReducer(items = [], action) {
-  if (action.type === 'incomes/mark-received') {
-    const index = items.findIndex((item) => item.id === action.id);
-    if (index === -1) return items;
-    const income = items[index];
-    const next = items.slice();
-    if (income.frequency === 'one-time' || !income.frequency) {
-      if (income.received) return items; // already received — no-op
-      next[index] = { ...income, received: true, updatedAt: action.now };
-    } else {
-      if (!income.nextDate) return items; // nothing to advance from
-      const advanced = advanceByFrequency(parseLocalDate(income.nextDate), income.frequency);
-      next[index] = { ...income, nextDate: getLocalDateKey(advanced), updatedAt: action.now };
-    }
-    return next;
-  }
-  return baseIncomesReducer(items, action);
-}
-
-
-// ---- src/modules/incomes/balance-effect.js ----
-// How confirming an Income as received affects the Current Balance
-// checkpoint. See docs/DATA-MODEL.md "Current Balance model" — mirrors
-// src/modules/expenses/balance-effect.js's pattern exactly (a pure
-// function deciding *how much* to credit, applied atomically by
-// src/main.js's rootReducer), but only for the single `incomes/
-// mark-received` action; ordinary create/update/delete/toggle on an
-// Income never touch the balance, same as before this existed.
-//
-// Deliberately narrower than the Expense version: editing or deleting an
-// income that was already marked received does NOT retroactively adjust
-// the balance (an already-recurring income doesn't even keep a durable
-// "received" marker to hang that adjustment on — see reducer.js). This
-// keeps scope narrow, consistent with docs/PRODUCT.md §5's non-goal "not
-// a full accounting/double-entry bookkeeping system" — the same
-// simplification Bills' `paid` flag already has no balance-linkage at
-// all. If this ever needs to change, it's a deliberate product decision,
-// not a bug.
-
-
-/**
- * @param {{type: string, id?: string}} action
- * @param {Array} prevIncomes the `incomes` slice before this action
- * @param {Array} nextIncomes the `incomes` slice after this action
- * @returns {number} cents to add to currentBalanceCents (always >= 0 — income only ever credits)
- */
-function computeIncomeBalanceDelta(action, prevIncomes, nextIncomes) {
-  if (action.type !== 'incomes/mark-received') return 0;
-  if (nextIncomes === prevIncomes) return 0; // the reducer no-op'd (already received, unknown id, etc.) — nothing to credit
-
-  const before = prevIncomes.find((income) => income.id === action.id);
-  // Corrupted stored amountCents (hand-edited/pre-validation localStorage
-  // data) contributes 0 rather than NaN-poisoning currentBalanceCents —
-  // same defensive pattern as expenses/balance-effect.js.
-  return before && isValidAmountCents(before.amountCents) ? before.amountCents : 0;
-}
-
-
-// ---- src/modules/incomes/index.js ----
-// The Incomes module's public interface. Other modules/UI import from
-// here — never from actions.js/reducer.js/selectors.js directly. See
-// docs/ARCHITECTURE.md §7.
-
-
-
-// ---- src/modules/income-receipts/create-receipt.js ----
-// Builds the historical record created every time an Income is confirmed
-// received — see docs/DATA-MODEL.md "IncomeReceipt". This is *not* a
-// user-facing CRUD entity (no create/update/delete actions of its own) —
-// it's an automatic log, one record appended per `incomes/mark-received`
-// dispatch, applied atomically alongside that action's existing balance
-// effect (src/modules/incomes/balance-effect.js) by src/main.js's
-// rootReducer, the one place with visibility into all three slices
-// (`incomes`, `incomeReceipts`, `budget`) this single action touches.
-//
-// Pure — decides *what record to create*, never mutates state itself,
-// same shape as every other *-effect.js in this codebase.
-
-
-/**
- * @param {{id: string, name: string, amountCents: number}|undefined} income
- *   the confirmed income, read *before* the mark-received mutation (its
- *   amount/name don't change during that mutation, but reading pre-mutation
- *   state is the more defensive choice — see src/main.js).
- * @param {Date} now
- * @returns {{id: string, incomeId: string, name: string, amountCents: number, date: string, createdAt: string}|null}
- *   `null` if there's nothing valid to record (unknown income, or a
- *   corrupted/invalid amount — the same defensive guard every balance
- *   effect in this codebase uses, so a bad stored value can't
- *   NaN-poison a receipt).
- */
-function createIncomeReceipt(income, now) {
-  if (!income || !isValidAmountCents(income.amountCents)) return null;
-  return {
-    id: createId('ir'),
-    incomeId: income.id,
-    name: income.name,
-    amountCents: income.amountCents,
-    date: getLocalDateKey(now),
-    createdAt: now.toISOString(),
-  };
-}
-
-
-// ---- src/modules/income-receipts/selectors.js ----
-
-function getAllIncomeReceipts(state) {
-  const value = state?.incomeReceipts;
-  return Array.isArray(value) ? value : [];
-}
-
-/**
- * Receipts whose `date` falls within `[startDateKey, endDateKey]`
- * (either bound optional/nullable) — the real, logged counterpart to
- * `getExpensesForPeriod` (src/modules/expenses/selectors.js), used by
- * `getPeriodSummary`'s unbounded-period branch (src/modules/dashboard/
- * index.js) to sum actual received income instead of projecting.
- * @param {object} state
- * @param {{startDateKey?: string|null, endDateKey?: string|null}} [options]
- */
-function getIncomeReceiptsForPeriod(state, { startDateKey = null, endDateKey = null } = {}) {
-  return getAllIncomeReceipts(state).filter((receipt) => {
-    if (!receipt?.date) return false;
-    if (startDateKey && receipt.date < startDateKey) return false;
-    if (endDateKey && receipt.date > endDateKey) return false;
-    return true;
-  });
-}
-
-/**
- * Sum of a list of receipts' amounts, skipping any with a corrupted/
- * invalid `amountCents` rather than letting one bad value NaN-poison the
- * total (same defensive pattern as every other *TotalCents helper in this
- * codebase).
- * @param {Array<{amountCents: number}>} receipts
- */
-function getIncomeReceiptsTotalCents(receipts) {
-  let totalCents = 0;
-  for (const receipt of Array.isArray(receipts) ? receipts : []) {
-    if (!receipt || !isValidAmountCents(receipt.amountCents)) continue;
-    totalCents += receipt.amountCents;
-  }
-  return totalCents;
-}
-
-
-// ---- src/modules/income-receipts/index.js ----
-// The Income Receipts module's public interface. See docs/ARCHITECTURE.md
-// §7 and docs/DATA-MODEL.md "IncomeReceipt". Not a user-facing CRUD
-// module — no create/update/delete actions — just the automatic
-// historical log created by src/modules/incomes/ "Mark received" and read
-// by src/modules/dashboard/index.js's `getPeriodSummary`.
-
-
-
-// ---- src/modules/bill-payments/create-payment.js ----
-// Builds the historical record created every time a Bill is marked
-// paid — see docs/DATA-MODEL.md "BillPayment". Mirrors src/modules/
-// income-receipts/create-receipt.js's shape exactly, the Bill-side
-// counterpart of the same idea: neither is a user-facing CRUD entity (no
-// create/update/delete actions of its own), both are automatic logs.
-// Applied atomically alongside `bills/toggle`'s existing balance effect
-// (src/modules/bills/balance-effect.js) by src/main.js's rootReducer, the
-// one place with visibility into all three slices (`bills`,
-// `billPayments`, `budget`) that action touches.
-//
-// Pure — decides *what record to create*, never mutates state itself.
-
-
-/**
- * @param {{id: string, name: string, amountCents: number}|undefined} bill
- *   the bill just marked paid, read *before* the mutation (its amount/
- *   name don't change during a paid/unpaid toggle, but the pre-mutation
- *   slice is the more defensive choice — see src/main.js).
- * @param {Date} now
- * @returns {{id: string, billId: string, name: string, amountCents: number, date: string, createdAt: string}|null}
- *   `null` if there's nothing valid to record (unknown bill, or a
- *   corrupted/invalid amount — the same defensive guard every balance
- *   effect in this codebase uses).
- */
-function createBillPayment(bill, now) {
-  if (!bill || !isValidAmountCents(bill.amountCents)) return null;
-  return {
-    id: createId('bp'),
-    billId: bill.id,
-    name: bill.name,
-    amountCents: bill.amountCents,
-    date: getLocalDateKey(now),
-    createdAt: now.toISOString(),
-  };
-}
-
-
-// ---- src/modules/bill-payments/selectors.js ----
-
-function getAllBillPayments(state) {
-  const value = state?.billPayments;
-  return Array.isArray(value) ? value : [];
-}
-
-/**
- * Payments whose `date` falls within `[startDateKey, endDateKey]` (either
- * bound optional/nullable) — the real, logged counterpart to
- * `getExpensesForPeriod`/`getIncomeReceiptsForPeriod`, used by
- * `getPeriodSummary`'s "Money out" (src/modules/dashboard/index.js) to
- * include what was actually paid, not just what was due.
- * @param {object} state
- * @param {{startDateKey?: string|null, endDateKey?: string|null}} [options]
- */
-function getBillPaymentsForPeriod(state, { startDateKey = null, endDateKey = null } = {}) {
-  return getAllBillPayments(state).filter((payment) => {
-    if (!payment?.date) return false;
-    if (startDateKey && payment.date < startDateKey) return false;
-    if (endDateKey && payment.date > endDateKey) return false;
-    return true;
-  });
-}
-
-/**
- * Sum of a list of payments' amounts, skipping any with a corrupted/
- * invalid `amountCents` rather than letting one bad value NaN-poison the
- * total (same defensive pattern as every other *TotalCents helper in this
- * codebase).
- * @param {Array<{amountCents: number}>} payments
- */
-function getBillPaymentsTotalCents(payments) {
-  let totalCents = 0;
-  for (const payment of Array.isArray(payments) ? payments : []) {
-    if (!payment || !isValidAmountCents(payment.amountCents)) continue;
-    totalCents += payment.amountCents;
-  }
-  return totalCents;
-}
-
-
-// ---- src/modules/bill-payments/index.js ----
-// The Bill Payments module's public interface. See docs/ARCHITECTURE.md
-// §7 and docs/DATA-MODEL.md "BillPayment". Not a user-facing CRUD module
-// — no create/update/delete actions — just the automatic historical log
-// created/un-created by src/modules/bills/ "Mark paid"/"Mark unpaid" and
-// read by src/modules/dashboard/index.js's `getPeriodSummary`.
-
-
-
-// ---- src/modules/dashboard/index.js ----
-// The Dashboard module: composition/selection logic for what the
-// dashboard displays, as distinct from the Safe-to-Spend *arithmetic*
-// (src/modules/safe-to-spend/), which this module never recomputes or
-// duplicates — see docs/ARCHITECTURE.md §7 ("the Dashboard module is the
-// only module allowed to depend on many other modules' selectors at
-// once"). This file only decides *what to list* and *in what order*;
-// every dollar figure the dashboard shows comes from
-// `getSafeToSpend(state)` directly.
-
-
-const DEFAULT_LIMIT = 5;
-
-/**
- * The most relevant upcoming commitments (active, unpaid bills + planned
- * expenses) for a short "at a glance" list — not a full ledger. Dated
- * items sort soonest-first; undated items sort last. See Phase 4 §
- * "Upcoming Commitments" — "do not display a giant transaction table."
- *
- * @param {object} state
- * @param {{limit?: number}} [options]
- * @returns {{items: Array<{id: string, kind: 'bill'|'plannedExpense', name: string, amountCents: number, date: string|null}>, remainingCount: number}}
- */
-function getUpcomingCommitments(state, { limit = DEFAULT_LIMIT } = {}) {
-  const relevantBills = getAllBills(state)
-    .filter((bill) => bill.active && !bill.paid)
-    .map((bill) => ({ id: bill.id, kind: 'bill', name: bill.name, amountCents: bill.amountCents, date: bill.dueDate ?? null }));
-
-  const relevantPlannedExpenses = getAllPlannedExpenses(state).map((expense) => ({
-    id: expense.id,
-    kind: 'plannedExpense',
-    name: expense.name,
-    amountCents: expense.amountCents,
-    date: expense.plannedDate ?? null,
-  }));
-
-  const combined = [...relevantBills, ...relevantPlannedExpenses].sort((a, b) => {
-    if (a.date && b.date) return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
-    if (a.date && !b.date) return -1;
-    if (!a.date && b.date) return 1;
-    return 0;
-  });
-
-  return {
-    items: combined.slice(0, limit),
-    remainingCount: Math.max(combined.length - limit, 0),
-  };
-}
-
-/**
- * The nearest active, unpaid bills, soonest-due first (undated last) — the
- * subset of `getUpcomingCommitments` that's bills only, for a dedicated
- * "Bills due soon" highlight. Same sort convention, no money arithmetic.
- * @param {object} state
- * @param {{limit?: number}} [options]
- * @returns {{items: Array<{id: string, name: string, amountCents: number, date: string|null}>, totalCount: number}}
- */
-function getUpcomingBills(state, { limit = 3 } = {}) {
-  const bills = getAllBills(state)
-    .filter((bill) => bill.active && !bill.paid)
-    .map((bill) => ({ id: bill.id, name: bill.name, amountCents: bill.amountCents, date: bill.dueDate ?? null }))
-    .sort((a, b) => {
-      if (a.date && b.date) return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
-      if (a.date && !b.date) return -1;
-      if (!a.date && b.date) return 1;
-      return 0;
-    });
-
-  return { items: bills.slice(0, limit), totalCount: bills.length };
-}
-
-/**
- * The nearest not-yet-received incomes, soonest-due first — the "Upcoming
- * income" card's shortlist (src/ui/components/upcoming-income.js), same
- * shape/convention as `getUpcomingBills`. Not period-scoped — like Bills
- * due soon, this is always "what's next," regardless of the header bar's
- * global period selector.
- * @param {object} state
- * @param {{limit?: number}} [options]
- * @returns {{items: Array<{id: string, name: string, amountCents: number, date: string|null, frequency: string}>, totalCount: number}}
- */
-function getUpcomingIncome(state, { limit = 3 } = {}) {
-  const incomes = getUnreceivedIncomes(state)
-    .map((income) => ({ id: income.id, name: income.name, amountCents: income.amountCents, date: income.nextDate ?? null, frequency: income.frequency }))
-    .sort((a, b) => {
-      if (a.date && b.date) return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
-      if (a.date && !b.date) return -1;
-      if (!a.date && b.date) return 1;
-      return 0;
-    });
-
-  return { items: incomes.slice(0, limit), totalCount: incomes.length };
-}
-
-/**
- * The header bar's global period selector feeds every period-scoped card
- * (This Period, Expenses) through this one function — see
- * docs/ARCHITECTURE.md and src/ui/screens/dashboard.js. Deliberately never
- * used by Safe-to-Spend or Current Balance, which are always "right now"
- * snapshots regardless of the selected period.
- *
- * Both figures are sums of a real, dated, historical log — never a
- * projection of what's *scheduled* — so both work identically for any
- * period, bounded or not, with no special-casing between them:
- * - `moneyInCents`: every `IncomeReceipt` (`docs/DATA-MODEL.md`) whose
- *   date falls in range — created automatically each time an Income is
- *   confirmed received ("Mark received"). An Income that's merely
- *   *upcoming* (scheduled but not yet confirmed) never counts here — see
- *   "Upcoming income" (`getUpcomingIncome` below) for that, a
- *   deliberately separate, non-period-scoped concept.
- * - `moneyOutCents`: every logged `Expense` *plus* every `BillPayment`
- *   whose date falls in range — created automatically each time a Bill is
- *   confirmed paid ("Mark paid"). A Bill that's merely *due* in the
- *   period never counts here either — see `billsDueCount` below for that.
- *
- * This used to differ: bounded periods projected from each income's
- * `nextDate`/`frequency` (`getIncomeOccurrencesInRange`) rather than
- * reading confirmed receipts, and bills never contributed to "Money out"
- * at all regardless of paid status. Both were real reported points of
- * confusion — an amount showing as "in"/"out" before it had actually
- * happened. `getIncomeOccurrencesInRange` is kept, unused by this file
- * now, in case a *distinct*, separately-labeled "projected" view is ever
- * wanted later (see its own doc comment).
- *
- * @param {object} state
- * @param {{startDateKey?: string|null, endDateKey?: string|null, now?: Date}} [options]
- * @returns {{moneyInCents: number, moneyOutCents: number, billsDueCount: number}}
- */
-function getPeriodSummary(state, { startDateKey = null, endDateKey = null, now = new Date() } = {}) {
-  const periodExpenses = getExpensesForPeriod(state, { period: 'custom', from: startDateKey, to: endDateKey, now });
-  const periodPayments = getBillPaymentsForPeriod(state, { startDateKey, endDateKey });
-  const moneyOutCents = getExpensesTotalCents(periodExpenses) + getBillPaymentsTotalCents(periodPayments);
-
-  const periodReceipts = getIncomeReceiptsForPeriod(state, { startDateKey, endDateKey });
-  const moneyInCents = getIncomeReceiptsTotalCents(periodReceipts);
-
-  const billsDueCount = getAllBills(state).filter((bill) => {
-    if (!bill || !bill.active || bill.paid) return false;
-    if (!bill.dueDate) return true; // no date at all — conservatively always counts, same convention as safe-to-spend/calculation.js
-    const dueKey = getCurrentBillDueDate(bill.dueDate, bill.recurrence, now);
-    if (dueKey == null) return false;
-    if (startDateKey != null && dueKey < startDateKey) return false;
-    if (endDateKey != null && dueKey > endDateKey) return false;
-    return true;
-  }).length;
-
-  return { moneyInCents, moneyOutCents, billsDueCount };
 }
 
 
@@ -5154,8 +5982,10 @@ function renderIncomeForm({ income = null, onSubmit, onCancel }) {
 
 // Whether the "+ Add income" popup is open — transient UI state,
 // deliberately outside the store (see docs/ARCHITECTURE.md §4). Moved
-// here from "This Period" (period-summary.js) so "add income" lives next
-// to the list it actually shows up in.
+// here from "This Period" (since folded into the merged "Right now" card
+// — src/ui/components/right-now-section.js — which has no add-income
+// affordance of its own) so "add income" lives next to the list it
+// actually shows up in.
 let addIncomeFormOpen = false;
 
 function expectedLabel(dateStr, now) {
@@ -5612,6 +6442,109 @@ function renderCategoryBudgetsSection({ state, dispatch, now = new Date(), reque
 }
 
 
+// ---- src/ui/components/inbox-section.js ----
+// The Inbox section — Brain Dump captures that haven't been turned into a
+// real Expense yet or dismissed (docs/DATA-MODEL.md "ExpenseDraft"). See
+// src/ui/components/brain-dump.js's header comment for why this is
+// scoped to money (an inbox of *expense stubs*), not a general notes
+// list. Items are never auto-deleted or auto-expired — they persist
+// until "Convert to expense" or the dismiss action removes them.
+
+
+// Which draft (if any) is mid-conversion into a real Expense — transient
+// UI state, deliberately outside the store (see docs/ARCHITECTURE.md §4),
+// same convention as expenses-section.js's `editingExpenseId`.
+let convertingDraftId = null;
+
+function draftRow({ draft, now, dispatch, requestRender }) {
+  return renderMoneyItem({
+    icon: iconChip('zap'),
+    title: draft.text,
+    meta: [formatRelativeTime(draft.createdAt, now)],
+    actions: [
+      el(
+        'button',
+        {
+          type: 'button',
+          class: 'btn btn--secondary btn--small',
+          onclick: () => {
+            convertingDraftId = draft.id;
+            requestRender?.();
+          },
+        },
+        'Convert to expense'
+      ),
+      iconButton(
+        'trash',
+        'Dismiss this note',
+        () => {
+          if (window.confirm("Dismiss this note? This can't be undone.")) {
+            dispatch(deleteExpenseDraftAction(draft.id));
+          }
+        },
+        { tone: 'attention' }
+      ),
+    ],
+  });
+}
+
+/**
+ * @param {object} options
+ * @param {object} options.state
+ * @param {Function} options.dispatch
+ * @param {Date} [options.now]
+ * @param {() => void} [options.requestRender]
+ */
+function renderInboxSection({ state, dispatch, now = new Date(), requestRender }) {
+  const drafts = getExpenseDraftsSortedByRecent(state);
+
+  const list =
+    drafts.length > 0
+      ? el(
+          'ul',
+          { class: 'money-list' },
+          drafts.map((draft) => draftRow({ draft, now, dispatch, requestRender }))
+        )
+      : emptyState('Nothing here yet — press N or tap + Brain dump to jot something down.');
+
+  // Converting reuses the real Add Expense form (src/ui/components/
+  // expenses-section.js), pre-filled with the note as the description —
+  // see renderExpenseForm's `initialDescription` option. The draft is
+  // only removed once the resulting Expense is actually saved, not the
+  // moment "Convert to expense" is clicked — closing this popup without
+  // submitting (Escape, the backdrop, the X) leaves the draft exactly
+  // where it was, so an abandoned conversion never silently loses the
+  // captured note.
+  const convertingDraft = drafts.find((draft) => draft.id === convertingDraftId) ?? null;
+  const closeConvert = () => {
+    convertingDraftId = null;
+    requestRender?.();
+  };
+  const popup = convertingDraft
+    ? renderPopup({
+        titleId: 'convert-to-expense-heading',
+        title: 'Convert to expense',
+        body: renderExpenseForm({
+          state,
+          initialDescription: convertingDraft.text,
+          onSubmit: (input) => {
+            dispatch(createExpenseAction(input, { now: new Date() }));
+            dispatch(deleteExpenseDraftAction(convertingDraft.id));
+            closeConvert();
+          },
+        }),
+        onClose: closeConvert,
+      })
+    : null;
+
+  return el(
+    'section',
+    { class: 'card', 'aria-labelledby': 'inbox-heading' },
+    [sectionHeading('zap', 'Inbox', 'inbox-heading'), list, popup].filter(Boolean)
+  );
+}
+
+
 // ---- src/modules/budget/actions.js ----
 // Action creators for the single-value budget figures: Current Balance,
 // Savings allocation (Phase 2 §1, §5; Safety Buffer removed at the user's
@@ -5749,15 +6682,24 @@ function renderDashboard({ state, dispatch, now = new Date(), requestRender }) {
   // Each card is tagged with its own `dashboard-grid__item--*` class so
   // CSS can order it independently per breakpoint (src/styles/
   // components.css / responsive.css). Cards are grouped into two
-  // `.dashboard-grid__col` wrapper divs — "main" (hero, categories,
-  // expenses) and "side" (this period, current balance, upcoming income,
-  // bills due soon, savings, the privacy note) — but that grouping only
-  // matters at desktop width. On mobile, `.dashboard-grid__col` is
-  // `display: contents` (removes its own box, promoting its children to
-  // direct flex items of `.dashboard-grid`), so every card still follows
-  // one flat `order` sequence there: hero -> balance -> this period ->
-  // categories -> expenses -> upcoming income -> bills -> savings ->
-  // privacy, the priority order asked for on a phone.
+  // `.dashboard-grid__col` wrapper divs — "main" (hero, inbox, categories,
+  // expenses) and "side" (the period card, Current balance, Upcoming
+  // Income, Bills Due Soon, Savings, the privacy note) — but that
+  // grouping only matters at desktop width. On mobile,
+  // `.dashboard-grid__col` is `display: contents` (removes its own box,
+  // promoting its children to direct flex items of `.dashboard-grid`),
+  // so every card still follows one flat `order` sequence there: hero ->
+  // inbox -> right-now -> balance -> categories -> expenses -> income ->
+  // bills -> savings -> privacy. Inbox sits right after the hero (moved
+  // from last in the main column) at the user's explicit request —
+  // quick-capture is a frequently-used feature and previously required
+  // scrolling past Categories/Expenses to reach.
+  //
+  // The period card and Current Balance briefly lived merged into one
+  // "Right now" card (Current balance + Money in + Money out), then the
+  // user asked to split Current Balance back out into its own card,
+  // directly below the period card — see right-now-section.js's own
+  // header comment for that whole lineage.
   //
   // The two-wrapper-div split was tried once before and reverted in
   // favor of one flat grid, because that version hard-coded DOM order as
@@ -5783,12 +6725,21 @@ function renderDashboard({ state, dispatch, now = new Date(), requestRender }) {
 
   const mainColumn = el('div', { class: 'dashboard-grid__col dashboard-grid__col--main' }, [
     gridItem('hero', renderSafeToSpendHero(result, { state, dispatch, requestRender })),
+    // Directly below the hero — Brain Dump quick-capture's Inbox
+    // (src/ui/components/inbox-section.js) — moved up from below Expenses
+    // so it no longer requires scrolling past Categories/Expenses to reach.
+    gridItem('inbox', renderInboxSection({ state, dispatch, now, requestRender })),
     gridItem('categories', renderCategoryBudgetsSection({ state, dispatch, now, requestRender })),
     gridItem('expenses', renderExpensesSection({ state, dispatch, requestRender, period: selectedPeriod })),
   ]);
 
+  // Period card (Money in/out, titled with the selected period — see
+  // right-now-section.js) -> Current balance (its own card again, right
+  // below the period card, at the user's explicit request to split it
+  // back out of that card) -> Upcoming Income -> Bills Due Soon ->
+  // Savings -> privacy, each full width and stacked.
   const sideColumn = el('div', { class: 'dashboard-grid__col dashboard-grid__col--side' }, [
-    gridItem('period', renderPeriodSummary(periodSummary)),
+    gridItem('right-now', renderRightNowSection({ periodSummary, periodLabel: getPeriodLabel(selectedPeriod) })),
     gridItem(
       'balance',
       renderSingleValueSection({
@@ -5799,6 +6750,9 @@ function renderDashboard({ state, dispatch, now = new Date(), requestRender }) {
         onSave: (cents) => dispatch(setCurrentBalanceAction(cents)),
         allowNegative: true,
         icon: 'wallet',
+        // No inline field/Save button — just "Currently: $X" and a pencil
+        // that opens a small popup to change it, at the user's request.
+        editOnly: true,
         requestRender,
       })
     ),
@@ -5827,6 +6781,13 @@ function renderDashboard({ state, dispatch, now = new Date(), requestRender }) {
       el('h1', { class: 'today-header__greeting' }, greetingText(state, now)),
       el('p', { class: 'today-header__date' }, formatFriendlyDate(now)),
     ]),
+    // Above the hero — a compact, scannable-in-2-seconds strip of stat
+    // tiles (src/ui/components/summary-strip.js): Total expenses, Total
+    // bills, Bills due, Inbox items. No longer reads `result`
+    // (getSafeToSpend's output) at all — Safe to Spend and Days left,
+    // the two tiles that used it, were both replaced at the user's
+    // request; see summary-strip.js's own header comment.
+    renderSummaryStrip({ state }),
     el('div', { class: 'dashboard-grid' }, [mainColumn, sideColumn]),
   ]);
 }
@@ -6096,6 +7057,9 @@ function renderOnboarding({ state, dispatch, now = new Date(), requestRender }) 
 // nothing left to navigate between.
 
 
+// Form fields the global "N" shortcut below must never hijack typing in.
+const TYPING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+
 /**
  * @param {object} options
  * @param {HTMLElement} options.container
@@ -6133,6 +7097,13 @@ function mountShell({ container, store, bus, persistenceUnavailable = false }) {
     document.documentElement.classList.toggle('theme-dark', theme === 'dark');
     document.documentElement.classList.toggle('theme-light', theme === 'light');
 
+    // Same "set once at the top of this render pass" mechanism as theme
+    // above — every `formatCents` call made while building the tree below
+    // (onboarding or dashboard, and everything under them) picks this up
+    // implicitly, with no currency prop threaded through any of them. See
+    // src/core/money.js's `setActiveCurrency` doc comment for why.
+    setActiveCurrency(getCurrency(state));
+
     main.innerHTML = '';
 
     // A brief, skippable first-run flow takes over the whole screen (no
@@ -6153,6 +7124,27 @@ function mountShell({ container, store, bus, persistenceUnavailable = false }) {
     // popup closed, this one line self-corrects every time.
     document.body.style.overflow = main.querySelector('.modal-backdrop') ? 'hidden' : '';
   }
+
+  // Global "N" shortcut — opens Brain Dump capture from anywhere in the
+  // app (docs/PRODUCT.md doesn't list this, but it's the same capture
+  // popup the header's persistent "+ Brain dump" button opens, not a
+  // separate affordance — see src/ui/components/brain-dump.js). Attached
+  // once here, at mount time (mountShell runs once per app lifetime, see
+  // src/main.js), not inside render() — render() reruns on every store
+  // change, so a listener added there would pile up a new one each time.
+  // Guarded against hijacking real typing (any focused form field) and
+  // against firing during onboarding, which has no header bar for the
+  // popup to visually belong to.
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'n' && event.key !== 'N') return;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const target = event.target;
+    const isTyping = target instanceof HTMLElement && (TYPING_TAGS.has(target.tagName) || target.isContentEditable);
+    if (isTyping) return;
+    if (!hasCompletedOnboarding(store.getState())) return;
+    event.preventDefault();
+    openBrainDumpCapture(render);
+  });
 
   store.subscribe(render);
   render();
@@ -6182,6 +7174,17 @@ const SLICE_REDUCERS = [
   { key: 'plannedExpenses', prefix: 'plannedExpenses/', reducer: plannedExpensesReducer },
   { key: 'budget', prefix: 'budget/', reducer: budgetReducer },
   { key: 'categoryBudgets', prefix: 'categoryBudgets/', reducer: categoryBudgetsReducer },
+  // Brain Dump quick-capture data (docs/DATA-MODEL.md "ExpenseDraft") —
+  // deliberately plain, generic slice routing, not a cross-slice special
+  // case like expenses/incomes/bills above: creating or deleting a draft
+  // never touches budget.currentBalanceCents itself. "Convert to expense"
+  // (src/ui/components/inbox-section.js) dispatches a real
+  // `expenses/create` (which *does* go through the special case above)
+  // followed by `expenseDrafts/delete`, as two ordinary dispatches, not
+  // one atomic transition — a draft is not money on its own, so there's
+  // nothing for these two slices to ever be transiently inconsistent
+  // about the way currentBalanceCents would be.
+  { key: 'expenseDrafts', prefix: 'expenseDrafts/', reducer: expenseDraftsReducer },
   { key: 'settings', prefix: 'settings/', reducer: settingsReducer },
 ];
 

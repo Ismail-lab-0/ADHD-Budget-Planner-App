@@ -15,6 +15,20 @@ import { icon, iconButton } from './icons.js';
 export const GLOBAL_PERIODS = ['week', 'month', 'lastMonth', 'all', 'custom'];
 const PERIOD_LABEL = { week: 'This week', month: 'This month', lastMonth: 'Last month', all: 'All time', custom: 'Custom range' };
 
+/**
+ * The human label for a selected period value — the same text this
+ * component already shows in its own toggle button/dropdown, exported so
+ * other cards that read the header bar's global period filter (e.g. the
+ * "Right now" card, src/ui/components/right-now-section.js) can title
+ * themselves with it instead of a static label, without duplicating this
+ * mapping.
+ * @param {{period: string, from: string|null, to: string|null}} value
+ * @returns {string}
+ */
+export function getPeriodLabel(value) {
+  return PERIOD_LABEL[value?.period] ?? 'This month';
+}
+
 // Whether the dropdown panel is open — transient UI state, deliberately
 // outside the store (see docs/ARCHITECTURE.md §4), same convention as
 // every other popup/toggle in this app.
@@ -27,7 +41,7 @@ let panelOpen = false;
  * @param {() => void} [options.requestRender]
  */
 export function renderPeriodSelector({ value, onChange, requestRender }) {
-  const toggle = iconButton('calendar', `Filter by period: ${PERIOD_LABEL[value.period] ?? 'This month'}`, () => {
+  const toggle = iconButton('calendar', `Filter by period: ${getPeriodLabel(value)}`, () => {
     panelOpen = !panelOpen;
     requestRender?.();
   });

@@ -6,11 +6,13 @@ import {
   completeOnboardingAction,
   setThemeAction,
   setDisplayNameAction,
+  setCurrencyAction,
   settingsReducer,
   getOnboardingCompletedAt,
   hasCompletedOnboarding,
   getTheme,
   getDisplayName,
+  getCurrency,
 } from '../../src/modules/settings/index.js';
 
 const NOW = new Date('2026-08-21T09:00:00.000Z');
@@ -110,5 +112,36 @@ describe('getDisplayName', () => {
   test('defaults to null when unset', () => {
     assert.equal(getDisplayName({ settings: {} }), null);
     assert.equal(getDisplayName({}), null);
+  });
+});
+
+describe('setCurrencyAction / settingsReducer', () => {
+  test('stores a supported currency code', () => {
+    const next = settingsReducer({ currency: 'USD' }, setCurrencyAction('EUR'));
+    assert.equal(next.currency, 'EUR');
+  });
+
+  test('an unsupported/invalid code is ignored, not stored', () => {
+    const settings = { currency: 'USD' };
+    const next = settingsReducer(settings, setCurrencyAction('XXX'));
+    assert.equal(next, settings);
+    assert.equal(next.currency, 'USD');
+  });
+
+  test('leaves other settings fields untouched', () => {
+    const next = settingsReducer({ currency: 'USD', displayName: 'Alex' }, setCurrencyAction('GBP'));
+    assert.equal(next.displayName, 'Alex');
+  });
+});
+
+describe('getCurrency', () => {
+  test('reflects a stored, supported currency', () => {
+    assert.equal(getCurrency({ settings: { currency: 'EUR' } }), 'EUR');
+  });
+
+  test('defaults to "USD" when unset or the stored value is unrecognized', () => {
+    assert.equal(getCurrency({ settings: {} }), 'USD');
+    assert.equal(getCurrency({}), 'USD');
+    assert.equal(getCurrency({ settings: { currency: 'XXX' } }), 'USD');
   });
 });

@@ -34,6 +34,14 @@ describe('rootReducer', () => {
     assert.equal(next.meta.createdAt, 'x');
     assert.equal(next.incomes, state.incomes);
   });
+
+  test('expenseDrafts/* routes to the generic slice reducer, untouched by any cross-slice special case (unlike expenses/incomes/bills)', () => {
+    const state = { budget: { currentBalanceCents: 5000 }, expenseDrafts: [] };
+    const next = rootReducer(state, { type: 'expenseDrafts/create', expenseDraft: { id: 'ed_1', text: 'Coffee with Sam', createdAt: 'x' } });
+    assert.deepEqual(next.expenseDrafts, [{ id: 'ed_1', text: 'Coffee with Sam', createdAt: 'x' }]);
+    // Creating a draft is not a money event — the balance is untouched.
+    assert.equal(next.budget.currentBalanceCents, 5000);
+  });
 });
 
 describe('initAppState', () => {

@@ -20,6 +20,7 @@ import { plannedExpensesReducer } from './modules/planned-expenses/index.js';
 import { budgetReducer } from './modules/budget/index.js';
 import { expensesReducer, computeBalanceDelta } from './modules/expenses/index.js';
 import { categoryBudgetsReducer } from './modules/category-budgets/index.js';
+import { expenseDraftsReducer } from './modules/expense-drafts/index.js';
 import { settingsReducer, hasCompletedOnboarding, completeOnboardingAction } from './modules/settings/index.js';
 
 // Each entry delegates one state slice to its module's own reducer,
@@ -32,6 +33,17 @@ const SLICE_REDUCERS = [
   { key: 'plannedExpenses', prefix: 'plannedExpenses/', reducer: plannedExpensesReducer },
   { key: 'budget', prefix: 'budget/', reducer: budgetReducer },
   { key: 'categoryBudgets', prefix: 'categoryBudgets/', reducer: categoryBudgetsReducer },
+  // Brain Dump quick-capture data (docs/DATA-MODEL.md "ExpenseDraft") —
+  // deliberately plain, generic slice routing, not a cross-slice special
+  // case like expenses/incomes/bills above: creating or deleting a draft
+  // never touches budget.currentBalanceCents itself. "Convert to expense"
+  // (src/ui/components/inbox-section.js) dispatches a real
+  // `expenses/create` (which *does* go through the special case above)
+  // followed by `expenseDrafts/delete`, as two ordinary dispatches, not
+  // one atomic transition — a draft is not money on its own, so there's
+  // nothing for these two slices to ever be transiently inconsistent
+  // about the way currentBalanceCents would be.
+  { key: 'expenseDrafts', prefix: 'expenseDrafts/', reducer: expenseDraftsReducer },
   { key: 'settings', prefix: 'settings/', reducer: settingsReducer },
 ];
 

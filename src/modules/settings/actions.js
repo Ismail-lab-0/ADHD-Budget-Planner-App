@@ -24,3 +24,17 @@ export function setThemeAction(theme) {
 export function setDisplayNameAction(name) {
   return { type: 'settings/set-display-name', name };
 }
+
+/**
+ * Sets the display currency — a formatting preference only (see
+ * src/core/money.js `formatCents`/`SUPPORTED_CURRENCIES`), not a
+ * conversion: every amount is still one stored number, always in cents,
+ * unchanged by this — only the symbol/format used to *display* it
+ * changes, everywhere `formatCents` is called. No exchange rates, no
+ * per-entry currency; this app deliberately stays single-currency in the
+ * data it stores.
+ * @param {string} currency an ISO 4217 code from `SUPPORTED_CURRENCIES`
+ */
+export function setCurrencyAction(currency) {
+  return { type: 'settings/set-currency', currency };
+}

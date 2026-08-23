@@ -4,7 +4,18 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseAmountToCents, isValidAmountCents, formatCents, centsToDollarString, parseBalanceToCents, isValidBalanceCents } from '../../src/core/money.js';
+import {
+  parseAmountToCents,
+  isValidAmountCents,
+  formatCents,
+  centsToDollarString,
+  parseBalanceToCents,
+  isValidBalanceCents,
+  SUPPORTED_CURRENCIES,
+  setActiveCurrency,
+  getActiveCurrency,
+  getCurrencySymbol,
+} from '../../src/core/money.js';
 
 describe('parseAmountToCents', () => {
   test('a whole-dollar string parses correctly', () => {
@@ -82,6 +93,75 @@ describe('formatCents', () => {
     assert.equal(formatCents(245050), '$2,450.50');
     assert.equal(formatCents(0), '$0.00');
     assert.equal(formatCents(5), '$0.05');
+  });
+
+  test('a negative amount keeps the sign before the currency symbol', () => {
+    assert.equal(formatCents(-4000), '-$40.00');
+  });
+
+  test('a non-finite value is treated as 0 rather than producing "NaN"', () => {
+    assert.equal(formatCents(NaN), '$0.00');
+    assert.equal(formatCents(undefined), '$0.00');
+  });
+});
+
+// Multi-currency (display preference only — see money.js's own
+// SUPPORTED_CURRENCIES comment): `setActiveCurrency` is module-level
+// state read implicitly by `formatCents`, same mechanism src/ui/shell.js
+// uses once per render. Every test here restores 'USD' before returning
+// (not just at file end) so no currency choice leaks into a test defined
+// after it in this same file/process, regardless of run order.
+describe('SUPPORTED_CURRENCIES / setActiveCurrency / getActiveCurrency / formatCents (multi-currency display)', () => {
+  test('defaults to USD before any setActiveCurrency call', () => {
+    assert.equal(getActiveCurrency(), 'USD');
+  });
+
+  test('SUPPORTED_CURRENCIES includes USD and is a non-empty, deduplicated-looking list', () => {
+    assert.ok(SUPPORTED_CURRENCIES.includes('USD'));
+    assert.equal(new Set(SUPPORTED_CURRENCIES).size, SUPPORTED_CURRENCIES.length);
+  });
+
+  test('formatCents renders the same stored number in whichever currency is active — no conversion, just a different symbol/format', () => {
+    setActiveCurrency('EUR');
+    assert.equal(getActiveCurrency(), 'EUR');
+    assert.equal(formatCents(245000), '€2,450.00');
+    setActiveCurrency('USD');
+  });
+
+  test('a currency with no minor unit (JPY) formats with no decimal places', () => {
+    setActiveCurrency('JPY');
+    assert.equal(formatCents(245000), '¥2,450');
+    setActiveCurrency('USD');
+  });
+
+  test('an unrecognized/corrupted currency code falls back to USD rather than throwing', () => {
+    setActiveCurrency('NOT_A_REAL_CODE');
+    assert.equal(getActiveCurrency(), 'USD');
+    assert.equal(formatCents(245000), '$2,450.00');
+  });
+});
+
+describe('getCurrencySymbol (the currency picker\'s icon-button glyph — src/ui/components/currency-selector.js)', () => {
+  test('returns the bare symbol for each supported currency', () => {
+    assert.equal(getCurrencySymbol('USD'), '$');
+    assert.equal(getCurrencySymbol('EUR'), '€');
+    assert.equal(getCurrencySymbol('GBP'), '£');
+    assert.equal(getCurrencySymbol('JPY'), '¥');
+  });
+
+  test('CAD/AUD render as a plain "$", not disambiguated (e.g. "CA$") — narrowSymbol, not the default symbol style', () => {
+    assert.equal(getCurrencySymbol('CAD'), '$');
+    assert.equal(getCurrencySymbol('AUD'), '$');
+  });
+
+  test('an unrecognized/corrupted code falls back to the default currency\'s symbol rather than throwing', () => {
+    assert.equal(getCurrencySymbol('NOT_A_REAL_CODE'), '$');
+  });
+
+  test('is independent of setActiveCurrency — always reflects the code passed in, not the active one', () => {
+    setActiveCurrency('JPY');
+    assert.equal(getCurrencySymbol('EUR'), '€');
+    setActiveCurrency('USD');
   });
 });
 

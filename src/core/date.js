@@ -80,6 +80,32 @@ export function formatFriendlyDate(date = new Date()) {
   }).format(date);
 }
 
+/**
+ * A short, relative label for a recent timestamp — "just now", "2m ago",
+ * "3h ago", "5d ago" — used by the Inbox section (src/ui/components/
+ * inbox-section.js) for Brain Dump capture timestamps, which are always
+ * recent by nature (a note sits in the Inbox until acted on, but it was
+ * always *captured* moments ago). Falls back to `formatFriendlyDate` past
+ * a week, where "12d ago" stops being a useful unit. Negative elapsed
+ * time (clock skew) is clamped to "just now" rather than shown as
+ * nonsensical negative minutes.
+ * @param {string} isoTimestamp
+ * @param {Date} [now]
+ * @returns {string}
+ */
+export function formatRelativeTime(isoTimestamp, now = new Date()) {
+  const then = new Date(isoTimestamp);
+  const diffSeconds = Math.max(0, Math.round((now.getTime() - then.getTime()) / 1000));
+  if (diffSeconds < 60) return 'just now';
+  const diffMinutes = Math.round(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return formatFriendlyDate(then);
+}
+
 /** @param {Date} date @param {number} n @returns {Date} `date` plus `n` local days */
 export function addDays(date, n) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + n);

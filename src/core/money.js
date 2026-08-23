@@ -89,14 +89,100 @@ export function isValidBalanceCents(value) {
   return Number.isInteger(value);
 }
 
-/** @param {number} cents @returns {string} e.g. "$2,450.00" */
+// ISO 4217 codes offered by the currency picker (src/ui/components/
+// currency-selector.js) — a deliberately short, common list, not
+// exhaustive; adding another is a one-line change here. This is purely a
+// *display* preference (docs/DATA-MODEL.md "Settings" — `settings.currency`)
+// — every stored amount stays exactly what it always was, one plain
+// integer-cents number, with no conversion, no exchange rates, and no
+// per-entry currency. Switching currencies only changes the symbol/
+// punctuation `formatCents` renders the same number with (see
+// `setActiveCurrency` below) — $2,450.00 and €2,450.00 represent the
+// identical stored value, deliberately not two different amounts.
+export const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD'];
+const DEFAULT_CURRENCY = 'USD';
+
+// The currency `formatCents` renders amounts in — set once per render
+// from the stored `settings.currency` (src/ui/shell.js's `render()`),
+// mirroring exactly how the stored theme preference is applied to
+// `<html>` once per render rather than threaded as a prop through every
+// component that needs it (see base.css's own theme comment). A
+// deliberate, narrow exception to this module's otherwise pure-function
+// design: `formatCents` is called from roughly a dozen UI files, several
+// through nested row-building helpers that don't currently receive
+// `state` at all — threading a currency argument through every one of
+// them would be a much larger, riskier change for a display-only
+// preference than reusing the "set once at the top of a render pass, read
+// implicitly for its duration" pattern this app already relies on for
+// theme. Safe because every render is fully synchronous, top-to-bottom
+// DOM construction (docs/ARCHITECTURE.md) — there is no interleaving that
+// could let one render's `formatCents` calls see a different render's
+// active currency.
+let activeCurrency = DEFAULT_CURRENCY;
+
+/**
+ * @param {string} currency an ISO 4217 code, ideally from
+ *   `SUPPORTED_CURRENCIES` — anything else (a corrupted stored value, an
+ *   unrecognized code) falls back to the default rather than risking a
+ *   thrown `Intl.NumberFormat` call blanking the whole dashboard.
+ */
+export function setActiveCurrency(currency) {
+  activeCurrency = SUPPORTED_CURRENCIES.includes(currency) ? currency : DEFAULT_CURRENCY;
+}
+
+/** @returns {string} the currency `formatCents` is currently rendering amounts in. */
+export function getActiveCurrency() {
+  return activeCurrency;
+}
+
+/**
+ * The bare symbol for a currency code (e.g. "$", "€", "£", "¥") — used by
+ * the currency picker's icon button (src/ui/components/
+ * currency-selector.js), which shows the sign itself rather than the
+ * 3-letter code. Derived from `Intl.NumberFormat` (`narrowSymbol` —
+ * plain "$" rather than e.g. "CA$" for CAD, which `Intl`'s default
+ * `symbol` style would disambiguate with) instead of a second hardcoded
+ * currency->symbol map, so this and `formatCents` can never disagree
+ * about what a given code renders as.
+ * @param {string} currency an ISO 4217 code, ideally from
+ *   `SUPPORTED_CURRENCIES` — falls back to the default currency's symbol
+ *   for anything else, same "never throw" contract as `formatCents`.
+ * @returns {string}
+ */
+export function getCurrencySymbol(currency) {
+  const code = SUPPORTED_CURRENCIES.includes(currency) ? currency : DEFAULT_CURRENCY;
+  try {
+    const part = new Intl.NumberFormat('en-US', { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol' })
+      .formatToParts(0)
+      .find((p) => p.type === 'currency');
+    return part?.value ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/**
+ * @param {number} cents
+ * @returns {string} e.g. "$2,450.00" in the active currency (see
+ *   `setActiveCurrency`) — locale fixed at `en-US` (thousands/decimal
+ *   punctuation, symbol placement) regardless of the browser's own
+ *   locale, so output stays deterministic and matches this app's existing
+ *   number formatting everywhere else, independent of which currency is
+ *   selected. `Intl.NumberFormat` handles each currency's real minor-unit
+ *   convention correctly on its own (e.g. JPY has no decimal places) —
+ *   this file doesn't hardcode that per currency.
+ */
 export function formatCents(cents) {
   const safe = Number.isFinite(cents) ? cents : 0;
-  const sign = safe < 0 ? '-' : '';
-  const abs = Math.abs(Math.round(safe));
-  const dollars = Math.floor(abs / 100);
-  const remainder = abs % 100;
-  return `${sign}$${dollars.toLocaleString('en-US')}.${String(remainder).padStart(2, '0')}`;
+  const rounded = Math.round(safe);
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: activeCurrency }).format(rounded / 100);
+  } catch {
+    // activeCurrency is only ever set from SUPPORTED_CURRENCIES via
+    // setActiveCurrency, so this should be unreachable — kept as a
+    // last-resort fallback rather than letting a formatting call throw.
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: DEFAULT_CURRENCY }).format(rounded / 100);
+  }
 }
 
 /** @param {number} cents @returns {number} plain dollars, e.g. for pre-filling a form input */

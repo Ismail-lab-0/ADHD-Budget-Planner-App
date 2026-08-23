@@ -4,7 +4,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { getUpcomingCommitments, getPeriodSummary, getUpcomingIncome } from '../../src/modules/dashboard/index.js';
+import { getUpcomingCommitments, getPeriodSummary, getUpcomingIncome, getUpcomingBillsTotalCents } from '../../src/modules/dashboard/index.js';
 
 function bill(overrides = {}) {
   return { id: 'b1', name: 'Bill', amountCents: 1000, dueDate: '2026-08-25', active: true, paid: false, recurrence: 'one-time', ...overrides };
@@ -194,5 +194,34 @@ describe('getUpcomingIncome', () => {
 
   test('an empty state produces an empty list', () => {
     assert.deepEqual(getUpcomingIncome({}).items, []);
+  });
+});
+
+describe('getUpcomingBillsTotalCents', () => {
+  test('sums every active, unpaid bill — the summary strip\'s "Total bills" tile', () => {
+    const state = { bills: [bill({ id: 'b1', amountCents: 6000 }), bill({ id: 'b2', amountCents: 90000 })] };
+    assert.equal(getUpcomingBillsTotalCents(state), 96000);
+  });
+
+  test('excludes paid and inactive bills', () => {
+    const state = {
+      bills: [bill({ id: 'paid', paid: true, amountCents: 999999 }), bill({ id: 'inactive', active: false, amountCents: 999999 }), bill({ id: 'live', amountCents: 500 })],
+    };
+    assert.equal(getUpcomingBillsTotalCents(state), 500);
+  });
+
+  test('is unbounded by due date — unlike getSafeToSpend\'s own upcomingBillsCents, every unpaid bill counts regardless of the payday horizon', () => {
+    const state = { bills: [bill({ id: 'far', dueDate: '2099-01-01', amountCents: 1000 })] };
+    assert.equal(getUpcomingBillsTotalCents(state), 1000);
+  });
+
+  test('skips a corrupted amountCents rather than NaN-poisoning the total', () => {
+    const state = { bills: [bill({ id: 'b1', amountCents: 500 }), bill({ id: 'bad', amountCents: 'oops' }), bill({ id: 'negative', amountCents: -100 })] };
+    assert.equal(getUpcomingBillsTotalCents(state), 500);
+  });
+
+  test('an empty or missing collection is a real $0, not a throw', () => {
+    assert.equal(getUpcomingBillsTotalCents({}), 0);
+    assert.equal(getUpcomingBillsTotalCents({ bills: [] }), 0);
   });
 });

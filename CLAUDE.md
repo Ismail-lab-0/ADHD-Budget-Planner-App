@@ -984,7 +984,14 @@ a schedule alone.
 
 **Dashboard: the phone layout now shows Current Balance and This Period
 directly after the Safe-to-Spend hero, and a real spacing bug between
-cards is fixed — both reported directly by the user from a screenshot.**
+cards is fixed — both reported directly by the user from a screenshot —
+superseded below.** This paragraph's own fix (the flat single-CSS-Grid
+design it describes) turned out to introduce a different real bug, also
+reported directly by the user from a screenshot, fixed in the entry right
+after this one — the flat-grid mechanism this paragraph describes is no
+longer what's in the codebase, only the mobile *ordering* result it
+achieved (hero → balance → this period → categories → expenses → ...)
+still holds.
 Root cause of both: `src/ui/screens/dashboard.js` used to build two fixed
 wrapper `<div>`s (`.dashboard-grid__main`, `.dashboard-grid__side`) — a
 "main" column (Hero, Categories, Expenses) and a "side" column (This
@@ -1024,6 +1031,547 @@ wrapper div Expenses happened to be inside.
   mobile-order rules and the desktop override, confirmed both compiled
   correctly with no minification to obscure them) and confirming all nine
   `dashboard-grid__item--*` classes render in the bundle.
+
+**Found and fixed a real follow-on layout bug in the fix directly above,
+reported directly by the user from a screenshot: at desktop width, the
+side column (This period, Current balance, ...) had large, uneven empty
+gaps between cards.** Root cause: the flat single-CSS-Grid design the
+previous entry introduced made every card a *direct* grid item, pinning
+only its column explicitly and leaving its row to auto-placement — which
+packs items row by row **across both columns**, so a row's height is
+forced to fit whichever column's card lands in it is tallest. Pairing the
+tall Hero card into the same row as the much shorter "This period" card
+left "This period" stranded with a large empty gap below it before the
+next row (Current balance) could start, and the same thing compounded
+down the rest of the side column. **Fixed** by wrapping each column's
+cards in their own `.dashboard-grid__col` container
+(`src/ui/screens/dashboard.js`'s `mainColumn`/`sideColumn`) — at desktop
+width (`src/styles/responsive.css`) each is a real, independent flex
+column (`display: flex; flex-direction: column`), so one column's card
+heights can never distort the other's spacing; `.dashboard-grid` itself
+just places the two columns side by side. On mobile
+(`src/styles/components.css`), `.dashboard-grid__col` is `display:
+contents` instead — it removes its own box, promoting its children back
+to direct flex items of `.dashboard-grid`, so the flat mobile `order`
+sequence from the previous entry (hero → balance → this period → ... )
+is completely unaffected; only the desktop mechanism changed. No
+calculation logic touched (446/446 tests still pass unchanged) — verified
+for real, not just reasoned about: built the bundle and loaded it in an
+actual headless browser (Playwright, installed temporarily for
+verification only — not added as a project dependency) at both 1400px
+and 390px with realistic seeded data, confirming tight/uniform spacing at
+desktop and the correct mobile order, before and after screenshots
+compared directly.
+
+**Added "Brain Dump" quick-capture, at the user's request — but only
+after a real scope conflict was flagged and resolved via
+`AskUserQuestion` before any code was written.** The request (a
+persistent header button, a global "N" shortcut, a single-field popup
+that saves instantly and stays open, and a persistent "Inbox" of
+free-text notes with "Convert to expense"/dismiss actions) is, read
+literally, general note/task capture — `docs/PRODUCT.md` §5 explicitly
+rules out "task capture/completion as a standalone feature," and this
+file's own "Product scope" section says the same. The user chose to keep
+the exact requested UX but resolve the conflict by **scoping every
+captured item to money**: what's stored is an `ExpenseDraft`
+(`docs/DATA-MODEL.md`), framed as an *unconfirmed expense stub*, not a
+generic note — every one either becomes a real `Expense` via "Convert to
+expense" or is dismissed; nothing about a draft's mere existence is ever
+read by Safe-to-Spend (same "excluded by construction" treatment as
+`CategoryBudget`, `docs/SAFE-TO-SPEND.md` §3b). This is why
+`docs/PRODUCT.md` itself needed no edit — the feature doesn't touch its
+§5 non-goals or need a new §4 bullet, since it's a faster on-ramp to the
+already-listed "Expense Tracking" feature, not a new one standing apart
+from it.
+
+What shipped, file by file:
+- **New `src/modules/expense-drafts/`** (`actions`/`reducer`/`selectors`/
+  `index`, the same shape as every other list-entity module — see
+  `src/core/list-entity.js`) — only `create`/`delete` are ever dispatched,
+  a draft is never edited in place. `schemaVersion` bumped 7 → 8
+  (`expenseDrafts: []`, purely additive, same shape as every prior
+  migration — see `docs/DATA-MODEL.md` §7). Plain generic routing in
+  `src/main.js`'s `SLICE_REDUCERS`, **not** a cross-slice special case
+  like Expenses/Income/Bills — creating or deleting a draft never touches
+  `budget.currentBalanceCents` on its own.
+- **New `src/ui/components/brain-dump.js`** — the persistent "+ Brain
+  dump" header button (`src/ui/components/header-bar.js`) and its capture
+  popup. The popup's "stays open, clears, for the next thought" behavior
+  needed no bespoke logic: `dispatch` already triggers a full synchronous
+  re-render (`src/core/store.js`), which rebuilds the popup from scratch
+  with a fresh empty input — the existing `renderPopup`'s own
+  `requestAnimationFrame(focusFirstField)` refocuses it automatically, the
+  same mechanism every other popup already relies on to focus on open.
+- **The global "N" shortcut lives in `src/ui/shell.js`**, attached once at
+  mount time (not inside `render()`, which reruns on every store change —
+  attaching there would pile up a new listener each time) — guarded
+  against hijacking real typing (any focused `<input>`/`<textarea>`/
+  `<select>`/`contenteditable`), against modifier keys (Cmd/Ctrl/Alt+N),
+  and against firing during onboarding, which has no header bar for the
+  popup to visually belong to.
+- **New `src/ui/components/inbox-section.js`** — the Inbox card, below
+  Expenses per the request, most-recent-first
+  (`getExpenseDraftsSortedByRecent`), each row showing the note text, a
+  relative timestamp, "Convert to expense," and a dismiss icon (confirmed
+  via `window.confirm`, matching every other delete action in this app —
+  Expense/Bill/CategoryBudget deletes all confirm the same way). "Convert
+  to expense" reuses the real Add Expense form
+  (`expenses-section.js`'s `renderExpenseForm`, unmodified in its
+  existing behavior) via a new, additive `initialDescription` option that
+  prefills and force-expands the Description field without flipping the
+  form into its edit-mode framing (button stays "+ Add expense," no
+  Cancel button) — a small, deliberate deviation from a literal reading
+  of "pre-fills... then removes it from Inbox": the draft is only removed
+  once the resulting Expense is actually **saved**, not the instant
+  "Convert to expense" is clicked, so closing that popup without
+  submitting (Escape/backdrop/X) leaves the note exactly where it was
+  instead of silently losing it.
+- **New `formatRelativeTime` in `src/core/date.js`** ("just now"/"2m
+  ago"/"3h ago"/"5d ago", falling back to `formatFriendlyDate` past a
+  week) — the first relative-past-time formatter in this codebase (every
+  existing one, e.g. `upcoming-income.js`'s "Expected in N days," is
+  forward-looking).
+- Empty state: "Nothing here yet — press N or tap + Brain dump to jot
+  something down." — matches the requested low-pressure tone exactly, no
+  wording implying falling behind.
+- Verified end-to-end through the real store/UI, not just unit tests
+  (though 19 new ones were added — `tests/unit/expense-drafts.test.js`,
+  a new `schema.test.js` v7→v8 block, `date.test.js`'s
+  `formatRelativeTime` block, one `main.test.js` routing check — 465/465
+  pass): built the bundle and drove it with a headless browser
+  (Playwright, installed temporarily for verification only), confirming
+  the header button opens the popup, Enter *and* the Save button both
+  capture instantly, the field clears and stays focused for a second
+  entry, the "N" shortcut opens the same popup, "Convert to expense"
+  actually pre-fills and visibly expands the Description field while
+  keeping "+ Add expense" phrasing, submitting it removes the draft *and*
+  correctly updates Current Balance/Safe-to-Spend through the existing
+  Expense balance effect, and the header button doesn't overflow at a
+  375px phone width. Both light and dark themes checked directly, not
+  assumed. `docs/DATA-MODEL.md` (new "ExpenseDraft" entity, root-shape
+  example, §7 migration history) and `docs/ARCHITECTURE.md` (new module
+  in the tree, `shell.js`/`components/` descriptions) updated in the same
+  change. Implemented ahead of `docs/ROADMAP.md`'s phase order (Phase 9 is
+  Data Backup/Import/Export) at the user's own explicit, detailed request
+  for this specific feature — Phase 9 itself remains not started.
+
+**A UX refinement pass on the dashboard's layout/hierarchy — explicitly
+scoped by the user as "not a new feature," and it isn't one: no action,
+selector, or stored shape changed, only composition/CSS.** Four asks:
+
+- **Unbalanced columns.** Measured against the real app rather than
+  guessed (Playwright, temporary, not a project dependency): with a
+  realistic dataset the side column (This period/Current balance/Upcoming
+  income/Bills due soon/Savings/privacy — 6 cards, several with an
+  always-visible form) ran 176px taller than the main column; with little
+  data logged yet, the gap was worse — the side column's cards have a
+  high floor height regardless of content, while the main column's
+  Categories/Expenses/Inbox collapse a lot in their empty states. Fixed
+  primarily via the second option the user offered (a layout that doesn't
+  depend on the columns matching), not by hand-balancing which cards live
+  in which column — that would only drift out of balance again the next
+  time either column's content changes. New `src/styles/responsive.css`
+  breakpoint at `1280px`: the side column becomes a 2-per-row CSS Grid
+  (`.dashboard-grid__col--side`) instead of a single vertical stack,
+  roughly halving its height; the privacy note spans both sub-columns
+  (it's a text line, not a stat card). `app-main`'s max-width also grows
+  a little at this breakpoint so the paired-up cards aren't cramped.
+  Re-measured after the fix: the realistic-data gap dropped from 176px to
+  25px; the sparse-data gap dropped from an estimated 250px+ to 240px (a
+  smaller improvement in absolute terms there, but off a much higher
+  base — side column height roughly halved in both cases). Below 1280px,
+  the side column stays a single stack (unchanged) — verified at 1024px
+  and 1100px specifically, where two real cards (Current Balance,
+  Savings) contain a text input + button that a naively-narrower half-a-
+  column width would cramp. **A known, accepted trade-off, not fixed**:
+  at exactly the new breakpoint's narrower per-card width, a couple of
+  two-word headings ("Current balance," "Upcoming income") wrap to two
+  lines instead of one — legible, not overlapping or cut off, just not
+  as tidy as a single line; judged not worth adding more CSS complexity
+  to chase given the actual balance win, and left as noted here rather
+  than silently accepted.
+- **No at-a-glance summary.** New `src/ui/components/summary-strip.js` —
+  a compact row of 4 stat tiles above the hero (Safe to spend, Bills due,
+  Days left, Inbox items), styled deliberately lighter than `.card` (no
+  shadow, tight padding — see `.summary-tile` in components.css) so it
+  reads as a glance strip, not a fifth card competing with the hero right
+  below it. **Zero new calculation logic** — every figure was already
+  computed elsewhere and simply not surfaced yet: `safeToSpendCents` and
+  `daysUntilPayday` from the same `getSafeToSpend` result the hero
+  already renders (`daysUntilPayday` existed since Phase 3 but had never
+  been shown anywhere in the UI until now), bill count from the same
+  `getUpcomingBills` selector "Bills due soon" already uses, Inbox count
+  from `getAllExpenseDrafts(state).length`. `auto-fit`/`minmax` wraps the
+  strip to 2-across then 1-across on narrower viewports with no manual
+  breakpoint needed.
+- **Inbox was buried.** Moved from last in the main column (after
+  Categories/Expenses) to directly below the hero — one line in
+  `src/ui/screens/dashboard.js` moved, both the mobile flat `order`
+  sequence (components.css) and the desktop main-column order
+  (responsive.css) updated to match. No component changed.
+- **Flat visual hierarchy.** Current Balance and Savings
+  (`src/ui/components/single-value-section.js`, the one component behind
+  both cards) gained the `.card--quiet` class already used by This
+  Period/Upcoming Income/Bills Due Soon — before this change they were
+  the two side-column cards still rendering at full `.card` weight, the
+  same visual weight as Categories/Expenses, which is exactly the "equal
+  weight" complaint. `.card--quiet` itself gained a smaller padding
+  (`--space-4` instead of `--space-5`) and a smaller headline-figure font
+  size (`.single-value-form__current` inside it drops from
+  `--font-size-xl` to `--font-size-base`) — both apply automatically to
+  every existing `.card--quiet` user, not just the two newly-converted
+  ones. The hero is untouched — still the only element using the green
+  gradient/serif-amount treatment.
+- Verified through the real store/UI at every breakpoint that matters,
+  not just the primary 1400px target: 1024px and 1100px (below the new
+  wide-desktop breakpoint — single-column side, unchanged), 1280px+
+  (the new 2-per-row side grid), a 390px phone (summary strip wraps 2×2,
+  Inbox correctly appears right after the hero), and both themes (the
+  existing token system needed no changes — every new class reads
+  `var(--color-*)` tokens, same as everything else). Confirmed the exact
+  empty-state copy this change was told to leave alone
+  ("Nothing here yet — press N or tap + Brain dump to jot something
+  down.") rendered unchanged. 465/465 existing tests pass unmodified — no
+  test file needed touching, since nothing here is calculation logic;
+  `docs/ARCHITECTURE.md`'s `components/` line updated in the same change
+  to list `summary-strip.js`.
+
+**A follow-on restructuring of the right column specifically, at the
+user's explicit request — fixing inconsistent card grouping/color usage,
+again layout/styling only, no data logic touched.**
+
+- **"This Period" and "Current Balance" merged into one card, "Right
+  now"** (new `src/ui/components/right-now-section.js`, replacing both;
+  `period-summary.js` deleted outright — nothing imported it anymore).
+  Three rows — Current balance, Money in, Money out — same row-icon
+  layout "This Period" always used (`.right-now*` CSS classes are the old
+  `.period-summary*` ones, renamed in place since the row shape itself
+  didn't change, only the card it lives in). The old "Bills due" row (a
+  period-scoped count) was dropped from the merge — it would now
+  duplicate both the Bills Due Soon card directly below it and the
+  summary strip's own bills-due tile. Current Balance kept its edit
+  capability as "a small inline edit affordance" (the option the user
+  offered as their preferred fallback if a full inline form didn't fit) —
+  a pencil `iconButton` next to the Current Balance row opens a popup,
+  same interaction Savings' own "edit total" pencil already used.
+  Implemented by generalizing `single-value-section.js`'s
+  `renderEditTotalForm` (now exported; three new optional params —
+  `parse`, `errorText`, `hint` — all defaulting to its exact prior
+  hardcoded behavior, so Savings' existing call site needed no changes)
+  rather than duplicating that popup-form boilerplate a second time,
+  parsing with `parseBalanceToCents` (negative allowed — Current Balance
+  legitimately can, docs/DATA-MODEL.md "Current Balance model") and no
+  `hint` (Savings' hint text about "replacing vs. adding" only makes
+  sense next to an additive form Current Balance has never had). Dispatches
+  the same, unchanged `setCurrentBalanceAction`.
+- **Bills Due Soon / Upcoming Income color coding — verified already
+  correct, not changed.** `.bills-due-soon` was already
+  `var(--color-status-caution-bg)` (amber/warning) and `.upcoming-income`
+  already `var(--color-status-positive-bg)` (green/positive) — this
+  request's color-consistency ask was already satisfied by existing code;
+  confirmed by reading the CSS rather than assumed, and left untouched.
+  Their order swapped (Bills now first/left, Income second/right) to
+  match the exact "Bills Due Soon + Upcoming Income" order the user wrote
+  in their requested column order, on both the desktop side-by-side pair
+  and the mobile flat stack.
+- **Savings moved to the bottom of the right column, full width.**
+  Already styled neutrally (`single-value-section.js`'s card carries no
+  color class, unlike Bills/Income) — no restyling needed, only
+  repositioning. "Full width" at the 1280px+ wide-desktop breakpoint
+  (src/styles/responsive.css, from the prior column-rebalancing entry
+  above) means `grid-column: 1 / -1`, same technique already used there
+  for the privacy note — now also applied to "Right now", since a
+  three-row merged card reads better spanning the full column than
+  squeezed into half of it. A CSS Grid item with an explicit full span
+  always claims its own entire row during auto-placement, so "Right now"/
+  Savings/privacy (all `1 / -1`) can never end up sharing a row with the
+  Bills/Income pair the way the hero once did with the old "This period"
+  card (see that bug's own entry above) — no explicit `grid-row` needed
+  to get the requested order (Right now → Bills | Income → Savings →
+  privacy).
+- **Resulting column-height balance — checked and reported, not
+  silently left as-is, per the user's own request to be told if it
+  didn't come out even.** Measured before and after (temporary
+  Playwright, not a project dependency): merging two right-column cards
+  into one, plus the two color-tint cards already being compact, shortened
+  the right column enough that the **left** column is now the taller one
+  — about 184px taller with realistic data at the primary 1400px target
+  (previously the right column was taller by a smaller margin, per the
+  prior entry's own rebalancing work). This is a direct, expected
+  consequence of the consolidation just requested — merging cards
+  necessarily makes that column shorter — not a bug or an overlooked
+  side effect, and was reported back rather than papered over with an
+  artificial height hack (e.g., padding one card to force a match), which
+  would misrepresent real content just to hit a pixel target. Left for
+  the user to decide whether a follow-up rebalancing pass is wanted.
+- Verified through the real store/UI at every breakpoint that matters
+  (1400px, 1100px — below the wide-desktop side-grid breakpoint, and a
+  390px phone) and both themes, including driving the actual "Edit
+  current balance" popup end to end (opened it, saved a negative amount,
+  confirmed `-$42.50` rendered correctly in the merged card — proving the
+  `parseBalanceToCents`/negative-allowed wiring, not just reading the
+  source). 465/465 existing tests pass unmodified. `docs/ARCHITECTURE.md`
+  updated in the same change (`right-now-section.js` in the tree,
+  `period-summary.js` noted as removed).
+
+**One more small right-column tweak, at the user's request: Bills Due
+Soon moved from beside Upcoming Income to directly underneath it** — one
+line reordered in `src/ui/screens/dashboard.js` (income before bills,
+was bills before income), matching `order` values updated in both
+components.css (mobile) and responsive.css (desktop). This left the
+1280px "pair Bills+Income 2-per-row to rebalance column height" mechanism
+from the entry above with nothing left to pair — every side-column card
+is single/full-width now — so that whole breakpoint block (the `1fr 1fr`
+sub-grid, `app-main`'s extra width) was deleted rather than kept as inert
+CSS with no visual effect. The side column is simply one flex-column
+stack at every desktop width now. 465/465 tests still pass (no logic
+touched); re-verified at 1400px and 1100px that both now render
+identically (same side-column height, 1177px, at both — confirming the
+breakpoint removal changed nothing it wasn't supposed to).
+
+**Summary strip tiles swapped, at the user's request: Safe to Spend ->
+Total expenses (position 1), Days left -> Total bills (position 2,
+moved up from 3) — Bills due and Inbox items shift down to fill 3 and
+4.** Rationale not stated by the user but worth recording: Safe to Spend
+showing twice (strip + hero, one card below it) added little, and "Days
+left" (`daysUntilPayday`) wasn't reused by anything else the same way
+the other three tiles' figures are. Both replacements reuse existing
+selectors — "Total expenses" is `getExpensesTotalCents(getAllExpenses
+(state))`, already public, no new code. "Total bills" needed one new
+selector, `getUpcomingBillsTotalCents(state)`
+(`src/modules/dashboard/index.js`) — every active, unpaid bill's amount
+summed with no due-date horizon, deliberately *not*
+`getSafeToSpend`'s own `upcomingBillsCents` (which only counts bills due
+before the next payday) so it matches what the neighboring "Bills due"
+count tile already means. Defensive against a corrupted `amountCents`,
+same pattern as every other `*TotalCents` selector in this codebase.
+`renderSummaryStrip` no longer takes a `result` param at all (nothing
+left in it reads `getSafeToSpend`'s output). `daysUntilPayday` itself is
+untouched and still computed — same "kept available even though nothing
+currently renders it" treatment other unused-but-real fields in this
+codebase get. Four new tests in `tests/unit/dashboard.test.js` for the
+new selector; 470/470 total pass. Verified against the real store/UI,
+not just the selector in isolation — Total expenses ($92.00) and Total
+bills ($960.00 = $900 Rent + $60 Internet) both matched the same seeded
+data's other cards exactly.
+
+**"Right now" card's heading now shows the header bar's selected period
+(e.g. "This month"), not a static "Right now" label; app-main's left/right
+padding reduced by exactly 20%.** Two small, unrelated asks in one
+message.
+- Heading: new `getPeriodLabel(value)` exported from
+  `src/ui/components/period-selector.js` (the same label text the period
+  dropdown already showed, previously private to that file) —
+  `src/ui/screens/dashboard.js` now passes `getPeriodLabel(selectedPeriod)`
+  into `renderRightNowSection` as `periodLabel`, which becomes the
+  `sectionHeading` text instead of the literal string `'Right now'`.
+  Deliberately just a label swap, not a scope change: Current Balance
+  inside that same card still isn't period-scoped (still always "right
+  now" underneath — docs/DATA-MODEL.md "Current Balance model" is
+  unchanged), only Money in/out actually vary with the selected period,
+  same as before. Verified by actually switching the period selector
+  through the real UI (This month -> This week -> All time) and reading
+  the heading text back each time, not just checking the wiring.
+- Padding: new `--app-edge-padding: 12.8px` token in `src/styles/base.css`
+  (`var(--space-4)` = 16px, reduced by exactly the requested 20%) —
+  deliberately not folded into the space-1..8 scale, since every value
+  there is a whole multiple of 4px and this one-off isn't; a single
+  purpose-named token instead of duplicating `12.8px` across the three
+  separate `.app-main` rules (base/640px/1024px) that set it. Only the
+  horizontal component changed — each breakpoint's vertical padding is
+  untouched (`--space-4`/`--space-6`/`--space-8` as before), confirmed via
+  computed styles in the real browser (`paddingLeft`/`paddingRight`:
+  `12.8px`, `paddingTop` still `32px` at desktop width).
+
+**Current Balance split back out of the merged "Right now" card into its
+own standalone card again, directly below the period card, at the user's
+request.** `src/ui/components/right-now-section.js` no longer touches
+Current Balance at all — no `getCurrentBalanceCents`/
+`setCurrentBalanceAction`, no edit-pencil popup, no `dispatch`/`state`
+params it doesn't need anymore; it's back to exactly two rows (Money in,
+Money out), titled with the selected period (unchanged from two entries
+above this one). `src/ui/screens/dashboard.js` re-adds Current Balance as
+its own `gridItem`, positioned directly under the period card — reusing
+`single-value-section.js`'s `renderSingleValueSection` completely
+unmodified, the exact same call (title/description/icon/
+`allowNegative: true`) it used before the merge ever happened. No new
+component needed — the merge never deleted this capability, only stopped
+calling it from dashboard.js. `order` values updated in both
+components.css (mobile) and responsive.css (desktop) for the reinstated
+`balance` slot. The period card's heading icon changed from `wallet`
+(which made sense paired with a balance row) to `calendar` (matching the
+old "This Period" card's icon) now that the card is purely period-scoped
+again. File/function names (`right-now-section.js`/
+`renderRightNowSection`) and the `.right-now*` CSS classes were
+deliberately **not** renamed even though "right now" no longer describes
+a card with zero always-current content left in it — same call already
+made for the CSS classes when this card was created from the deleted
+`period-summary.js` (a name outliving what it describes, documented
+inline rather than churning every reference for an internal identifier
+with no user-visible effect); both files now cross-reference this same
+history in their header comments. `docs/ARCHITECTURE.md`'s `components/`
+line updated to match. 470/470 tests pass (no logic touched — this is
+composition/layout only); verified through the real UI that the period
+card and the reinstated Current Balance card both render correctly and
+in the right order.
+
+**Current Balance's inline field/Save button removed, at the user's
+request — just a pencil icon that opens a small popup to change it.**
+`src/ui/components/single-value-section.js` gained a new `editOnly`
+option: when true, the card renders only the "Currently: $X" line plus a
+pencil `iconButton`, skipping the inline `amountField`/error/success/
+submit-button form entirely — the popup (reusing the same
+`renderEditTotalForm` Savings' own "edit total" pencil already used) is
+the only way to change the value, not a secondary shortcut alongside a
+still-visible form. `src/ui/screens/dashboard.js`'s Current Balance call
+site gained one new line, `editOnly: true` — no new component, no change
+to `setCurrentBalanceAction` or any other logic.
+- **A real cross-instance bug caught and fixed while making this
+  change, not shipped:** the pencil-popup's open/closed state used to be
+  one shared module-level boolean (`editTotalFormOpen`), fine when only
+  Savings ever used the pencil pattern, but Current Balance switching to
+  `editOnly` meant two separate card instances could now show this popup
+  — with a single shared boolean, opening one card's popup would have
+  made the *other* card's popup appear open too on the next render (both
+  instances check the same flag). Fixed by keying the open state to the
+  section's own `id` (`editPopupOpenId`, holding the open section's id or
+  `null`, not a bare boolean) — same "track *which one*, not just
+  whether one" convention already used elsewhere in this app (e.g.
+  inbox-section.js's `convertingDraftId`). Verified directly, not just
+  reasoned about: opened Current Balance's popup, saved a new value
+  ($999.99, confirmed it rendered), then opened Savings' popup and
+  confirmed Current Balance's popup did *not* also appear open.
+- 470/470 tests pass (no logic touched). Verified end to end through the
+  real UI: no inline input exists under Current Balance anymore, the
+  popup pre-fills correctly, saves correctly, and both cards' pencils
+  work independently.
+
+**Added a currency picker, top-left of the dashboard, at the user's
+request — with the scope clarified via `AskUserQuestion` before writing
+any code, since "multi-currency" is genuinely ambiguous and the two
+readings have wildly different costs.** The two options put to the user:
+(a) a display-only currency picker — one formatting preference for the
+whole app, no conversion, no per-entry currency; or (b) true multi-
+currency tracking — each Bill/Income/Expense in its own currency,
+converted into one Safe-to-Spend figure, which needs exchange rates from
+somewhere. (b) would have been a large, invasive change (new fields
+across most of the data model, conversion logic threaded through every
+money calculation in `safe-to-spend/calculation.js` and friends) and,
+if the rates were meant to update automatically, would have required an
+explicit decision to override this app's own non-negotiable "no external
+API calls, nothing should make a network request in normal use, fully
+offline-capable" rule — a live-rates API is exactly the kind of thing
+that rule exists to keep out. The user picked (a).
+
+What shipped, entirely within that scope:
+- **`src/core/money.js`** gained `SUPPORTED_CURRENCIES` (a short, fixed
+  list — USD/EUR/GBP/JPY/CAD/AUD, not exhaustive, a one-line addition to
+  extend) and rewrote `formatCents` from hand-rolled `` `$${dollars}...` ``
+  string-building to `Intl.NumberFormat('en-US', { style: 'currency',
+  currency })` — the locale is pinned to `en-US` regardless of the
+  browser's own locale, so punctuation/thousands-separator conventions
+  stay deterministic and unchanged for the existing USD default; only the
+  *currency* varies. `Intl.NumberFormat` handles each currency's real
+  minor-unit convention correctly on its own (JPY has no decimal places,
+  confirmed via a real formatted `¥2,450`, no decimals, not hand-coded
+  per currency). This is a **narrow, deliberate exception to money.js's
+  otherwise pure-function design**: which currency is active is
+  module-level state (`activeCurrency`, set via `setActiveCurrency`/read
+  via `getActiveCurrency`), not a parameter every caller passes in —
+  `formatCents` is called from roughly a dozen UI files, several through
+  nested row-building helpers that don't currently receive `state` at
+  all, so threading a currency argument through every one of them would
+  have been a much larger, riskier change for a display-only preference.
+  This mirrors a pattern this codebase already uses for exactly this kind
+  of cross-cutting display concern: theme is applied as a class on
+  `<html>` once per render, not threaded as a prop through every
+  component that needs it. `src/ui/shell.js`'s `render()` now calls
+  `setActiveCurrency(getCurrency(state))` right alongside its existing
+  theme-class toggle, before building either screen's tree — safe because
+  every render in this app is fully synchronous, top-to-bottom DOM
+  construction, so there's no interleaving that could let one render's
+  `formatCents` calls see a different render's currency.
+- **`settings.currency`** (`src/modules/settings/`) — `setCurrencyAction`/
+  `getCurrency`, defaulting to `'USD'`, rejecting an unrecognized code
+  rather than storing it (same "ignore invalid, don't store garbage"
+  pattern `setThemeAction` already used). No schema version bump — same
+  "a new scalar settings field with a safe default when missing needs no
+  migration" precedent `theme`/`displayName`/`reducedMotion` already
+  established.
+- **New `src/ui/components/currency-selector.js`** — an anchored
+  dropdown, structurally the same scrim+panel pattern
+  `period-selector.js` already uses (a transparent full-page click-catcher
+  behind the panel, closing on an outside click or Escape with no raw
+  `document`-level listener), but anchored to its toggle's *left* edge
+  instead of the right, since this toggle lives at the left end of the
+  header bar (a right-anchored panel there would run off the left edge
+  of the viewport). Rendered inside `header-bar.js`'s brand area,
+  directly next to "Money" — literally top-left, as asked, not grouped
+  with the period-selector/theme-toggle controls on the right.
+- **A real `let`/`const` name collision caught by the build's own
+  regression test, not shipped**: this bundler concatenates every module
+  into one shared scope (no per-module isolation), and
+  `currency-selector.js`'s first draft declared `let panelOpen = false`
+  — the exact same name `period-selector.js` already uses for its own,
+  unrelated open/closed flag. `npm run build` doesn't catch `let`/`const`
+  collisions (only function declarations — a known, documented gap from
+  an earlier session), but `tests/unit/build.test.js` does, because it
+  executes the real built bundle rather than just reading source; it
+  failed with `SyntaxError: Identifier 'panelOpen' has already been
+  declared` until renamed to `currencyPanelOpen`.
+- **`tests/unit/build.test.js` itself needed a real update, not just a
+  passthrough**: its regression check for a much older bug (a *string*
+  `.replace()` call mangling a literal `$` immediately before a `${...}`
+  interpolation — see that file's own header comment) pattern-matched
+  money.js's old hand-rolled `` `$${dollars}...}` `` template literal
+  verbatim in the built bundle. That exact source no longer exists after
+  this change (formatCents is `Intl`-based now), so the old assertion
+  would have been testing dead source text, not a real property. Rewired
+  to check the actual fix directly instead — that `build.js`'s `.replace()`
+  call still passes a function, not a string, as its second argument —
+  which is what actually prevents this whole bug class regardless of what
+  any given module's source contains later; the stronger half of the
+  original test (extracting the real `formatCents` from the built bundle
+  and executing it, proving actual runtime output, not a string-match
+  coincidence) was kept unchanged.
+- Verified end-to-end through the real UI, not just the unit tests (13
+  new ones, across `money.test.js`/`settings.test.js`/the rewritten
+  `build.test.js` — 483/483 total pass): switched currency to EUR and
+  confirmed *every* dollar figure on the dashboard updated together — the
+  hero, the summary strip, "This month," Current Balance, Upcoming
+  Income, Bills Due Soon — with zero changes to any of those files' own
+  code, proving the module-level `activeCurrency` mechanism actually
+  reaches every caller as designed. Also confirmed the choice survives a
+  real reload by reading `localStorage` directly (a first attempt using
+  Playwright's `page.reload()` gave a false-negative — its own
+  `addInitScript` re-seeds `localStorage` on every reload in that test
+  harness, unrelated to the app itself, caught and correctly identified
+  as a test artifact rather than chased as a false bug).
+  `docs/DATA-MODEL.md` ("Settings," including the "why not real
+  multi-currency" reasoning) and `docs/ARCHITECTURE.md` (money.js,
+  settings/, and the new component) updated in the same change.
+
+**Currency picker: moved to the header bar's right-side controls group
+(next to the period selector and theme toggle) and switched from a
+text-code button ("USD") to an icon button showing the currency's bare
+sign ("$"), both at the user's explicit follow-up request.** New
+`getCurrencySymbol(currency)` in `src/core/money.js` — derived from
+`Intl.NumberFormat`'s `narrowSymbol` display (not a second hardcoded
+currency→symbol map, so it can never disagree with `formatCents` about
+what a code renders as); `narrowSymbol` specifically because `Intl`'s
+default `symbol` style disambiguates CAD as "CA$" rather than a plain
+"$", which a one-character icon glyph doesn't have room for.
+`currency-selector.js`'s toggle is now a plain `.icon-btn` (not
+`iconButton()` — that helper always renders a hand-authored SVG glyph;
+this needed a text character instead) showing that symbol, matching the
+square footprint of its new neighbors. The dropdown panel's anchor
+flipped from `left: 0` to `right: 0` to match — it's no longer at the
+left end of the header bar, so a left-anchored panel would have run off
+the right edge instead of overflowing safely inward. `header-bar.js`'s
+brand area is back to just the wallet icon + "Money," unchanged from
+before the currency picker ever existed. 487/487 tests pass (4 new, for
+`getCurrencySymbol`); verified through the real UI that the icon shows
+the correct sign and updates immediately on selection.
 
 **Current phase: Phase 9 — Data Backup / Import / Export**, not started.
 See `docs/ROADMAP.md` for full detail; do not jump ahead to later phases

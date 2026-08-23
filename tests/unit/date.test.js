@@ -14,6 +14,7 @@ import {
   endOfMonth,
   startOfWeek,
   advanceByFrequency,
+  formatRelativeTime,
 } from '../../src/core/date.js';
 
 describe('getLocalDateKey', () => {
@@ -175,5 +176,36 @@ describe('advanceByFrequency', () => {
     const date = new Date(2026, 7, 1);
     assert.equal(advanceByFrequency(date, 'one-time'), date);
     assert.equal(advanceByFrequency(date, undefined), date);
+  });
+});
+
+describe('formatRelativeTime', () => {
+  const NOW = new Date('2026-08-23T12:00:00.000Z');
+
+  test('under a minute reads "just now"', () => {
+    assert.equal(formatRelativeTime(new Date('2026-08-23T11:59:30.000Z').toISOString(), NOW), 'just now');
+    assert.equal(formatRelativeTime(NOW.toISOString(), NOW), 'just now');
+  });
+
+  test('minutes ago, singular unit label at the boundary', () => {
+    assert.equal(formatRelativeTime(new Date('2026-08-23T11:58:00.000Z').toISOString(), NOW), '2m ago');
+    assert.equal(formatRelativeTime(new Date('2026-08-23T11:59:00.000Z').toISOString(), NOW), '1m ago');
+  });
+
+  test('hours ago once past 60 minutes', () => {
+    assert.equal(formatRelativeTime(new Date('2026-08-23T09:00:00.000Z').toISOString(), NOW), '3h ago');
+  });
+
+  test('days ago once past 24 hours, up to a week', () => {
+    assert.equal(formatRelativeTime(new Date('2026-08-21T12:00:00.000Z').toISOString(), NOW), '2d ago');
+    assert.equal(formatRelativeTime(new Date('2026-08-17T12:00:00.000Z').toISOString(), NOW), '6d ago');
+  });
+
+  test('falls back to a friendly date past a week', () => {
+    assert.equal(formatRelativeTime(new Date('2026-08-01T12:00:00.000Z').toISOString(), NOW), formatFriendlyDate(new Date('2026-08-01T12:00:00.000Z')));
+  });
+
+  test('a future timestamp (clock skew) clamps to "just now" instead of a negative value', () => {
+    assert.equal(formatRelativeTime(new Date('2026-08-23T12:05:00.000Z').toISOString(), NOW), 'just now');
   });
 });

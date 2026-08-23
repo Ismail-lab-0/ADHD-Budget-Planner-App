@@ -14,6 +14,7 @@ import { getExpensesForPeriod, getExpensesTotalCents } from '../expenses/index.j
 import { getIncomeReceiptsForPeriod, getIncomeReceiptsTotalCents } from '../income-receipts/index.js';
 import { getBillPaymentsForPeriod, getBillPaymentsTotalCents } from '../bill-payments/index.js';
 import { getCurrentBillDueDate } from '../safe-to-spend/index.js';
+import { isValidAmountCents } from '../../core/money.js';
 
 const DEFAULT_LIMIT = 5;
 
@@ -73,6 +74,32 @@ export function getUpcomingBills(state, { limit = 3 } = {}) {
     });
 
   return { items: bills.slice(0, limit), totalCount: bills.length };
+}
+
+/**
+ * Total amount currently owed across every active, unpaid bill — the
+ * dollar-amount counterpart to `getUpcomingBills`'s `totalCount`, for the
+ * summary strip's "Total bills" tile (src/ui/components/summary-strip.js).
+ * Same active-and-unpaid filter as `getUpcomingBills`, but unbounded (no
+ * `limit`, since a sum needs every matching bill, not just the nearest
+ * few) and with no due-date horizon applied — unlike `getSafeToSpend`'s
+ * own `upcomingBillsCents` (src/modules/safe-to-spend/calculation.js),
+ * which only counts bills due before the next payday, this is every bill
+ * currently unpaid, matching what "Bills due" (the neighboring count
+ * tile) already means. Skips a corrupted `amountCents` rather than
+ * letting one bad value NaN-poison the total, same defensive pattern as
+ * `getExpensesTotalCents`.
+ * @param {object} state
+ * @returns {number}
+ */
+export function getUpcomingBillsTotalCents(state) {
+  let totalCents = 0;
+  for (const bill of getAllBills(state)) {
+    if (!bill || !bill.active || bill.paid) continue;
+    if (!isValidAmountCents(bill.amountCents)) continue;
+    totalCents += bill.amountCents;
+  }
+  return totalCents;
 }
 
 /**

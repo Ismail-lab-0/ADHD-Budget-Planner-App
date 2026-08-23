@@ -18,7 +18,7 @@ Everything lives under a single `localStorage` key, e.g.
 
 ```jsonc
 {
-  "schemaVersion": 7,
+  "schemaVersion": 8,
   "meta": {
     "createdAt": "2026-08-19T00:00:00.000Z",
     "lastOpenedAt": "2026-08-19T00:00:00.000Z"
@@ -31,7 +31,8 @@ Everything lives under a single `localStorage` key, e.g.
   "expenses": [ /* Expense[] */ ],
   "categoryBudgets": [ /* CategoryBudget[] */ ],
   "incomeReceipts": [ /* IncomeReceipt[] */ ],
-  "billPayments": [ /* BillPayment[] */ ]
+  "billPayments": [ /* BillPayment[] */ ],
+  "expenseDrafts": [ /* ExpenseDraft[] */ ]
 }
 ```
 
@@ -410,6 +411,47 @@ or not — a Bill that's merely due, not yet paid, never counts here, only
 in `billsDueCount` (same file, a deliberately separate concept: what's
 coming up, not what's left the account).
 
+### ExpenseDraft
+
+The data behind "Brain dump" quick capture — a persistent header button
+plus a global "N" keyboard shortcut open a single-field popup
+(`src/ui/components/brain-dump.js`); pressing Enter or "Save" stores the
+text instantly, with no required category or amount, and the popup
+clears and stays open for the next thought. Each capture becomes one
+`ExpenseDraft`, shown in the "Inbox" card (`src/ui/components/
+inbox-section.js`) below the Expenses section, most recent first.
+
+**Deliberately scoped to money, not a general notes/task list** — this
+was a real conflict, flagged to and resolved by the user (see CLAUDE.md's
+"Current status"): `docs/PRODUCT.md` §5 explicitly rules out "task
+capture/completion as a standalone feature." An `ExpenseDraft` is framed
+as an *unconfirmed expense stub*, not a note: it exists only to become a
+real `Expense` ("Convert to expense," which pre-fills the existing Add
+Expense form — `renderExpenseForm`'s `initialDescription` option — with
+the draft's text as the description) or to be dismissed. It is never read
+by Safe-to-Spend, the same "excluded by construction" treatment as
+`CategoryBudget` (`docs/SAFE-TO-SPEND.md` §3b) — nothing about a draft's
+mere existence is a financial commitment.
+
+```jsonc
+{
+  "id": "ed_...",
+  "text": "string, required — the raw captured note; becomes the new Expense's description if converted",
+  "createdAt": "ISO timestamp"
+}
+```
+
+Never auto-deleted or auto-expired — a draft persists until "Convert to
+expense" (which only removes it once the resulting Expense is actually
+saved, not the moment the button is clicked — closing that popup without
+submitting leaves the draft untouched, so an abandoned conversion never
+silently loses the note) or the dismiss action removes it. No `updatedAt`
+— a draft is only ever created or deleted, never edited in place. Not a
+cross-slice effect like Expense/Income/Bill above: creating or deleting a
+draft never touches `budget.currentBalanceCents` on its own — only the
+real `Expense` created by a successful conversion does, through the
+existing Expense balance effect (§3a).
+
 ### Settings
 
 ```jsonc
@@ -417,7 +459,8 @@ coming up, not what's left the account).
   "onboardingCompletedAt": "ISO timestamp | null",
   "displayName": "string | null, optional, used only for greeting copy",
   "theme": "'system' | 'light' | 'dark'",
-  "reducedMotion": "boolean, mirrors/overrides prefers-reduced-motion if set explicitly"
+  "reducedMotion": "boolean, mirrors/overrides prefers-reduced-motion if set explicitly",
+  "currency": "an ISO 4217 code from src/core/money.js's SUPPORTED_CURRENCIES, defaults to 'USD'"
 }
 ```
 
@@ -430,6 +473,23 @@ this it existed in the schema but nothing read or wrote it. It's
 persisted the same way everything else in this app is — through the
 existing storage adapter (docs/ARCHITECTURE.md), the app's one and only
 `localStorage` access path — not a separate, bespoke key.
+
+`currency` is a **display preference only**, added via
+`src/ui/components/currency-selector.js` — an icon button in the header
+bar's right-side controls group, alongside the period selector and theme
+toggle, showing the active currency's bare sign (e.g. "$", "€" —
+`getCurrencySymbol`) rather than its 3-letter code. Picking a currency changes
+what symbol/punctuation `formatCents` (`src/core/money.js`) renders every
+stored amount with, everywhere in the app — it does **not** convert
+anything: the underlying stored number (integer cents) is completely
+unchanged, there is no per-Bill/per-Expense/per-Income currency, and no
+exchange rates are involved anywhere in this app. `€2,450.00` and
+`$2,450.00` represent the identical stored `245000`, deliberately. This
+was an explicit, narrower scope decision — see CLAUDE.md "Current
+status" for the fuller "true multi-currency tracking" alternative that
+was considered and declined, partly because it would need exchange rates
+from somewhere, and a live/automatic source would conflict with this
+app's non-negotiable "no external API calls, fully offline" rule.
 
 `displayName` is now also live, the same way — set by onboarding's "Your
 name" step (`setDisplayNameAction`, `src/ui/screens/onboarding.js`), read
@@ -479,7 +539,7 @@ per-module reimplementation (already built, Phase 0).
 
 ## 7. Schema versioning & migrations
 
-- `schemaVersion` is a plain incrementing integer, currently `7`.
+- `schemaVersion` is a plain incrementing integer, currently `8`.
 - **v1 → v2:** pre-pivot Task shape evolution (see git history) — no
   longer relevant to the current product but preserved in the migration
   chain for correctness (a v1 install still migrates through v2 on its way
@@ -510,6 +570,9 @@ per-module reimplementation (already built, Phase 0).
   `incomeReceipts`: a real historical log "Money out" sums from (alongside
   `Expense`s) for any period, instead of counting bills that are merely
   *due*. See "BillPayment" above.
+- **v7 → v8 (Expense Drafts):** purely additive — adds the empty
+  `expenseDrafts` collection, the data behind "Brain dump" quick capture.
+  See "ExpenseDraft" above.
 - On load, the storage adapter reads the stored `schemaVersion` and runs
   every migration function in sequence up to the current version before
   the state reaches the store — mechanism unchanged, already built and

@@ -19,8 +19,10 @@ import { getUpcomingIncome } from '../../modules/dashboard/index.js';
 
 // Whether the "+ Add income" popup is open — transient UI state,
 // deliberately outside the store (see docs/ARCHITECTURE.md §4). Moved
-// here from "This Period" (period-summary.js) so "add income" lives next
-// to the list it actually shows up in.
+// here from "This Period" (since folded into the merged "Right now" card
+// — src/ui/components/right-now-section.js — which has no add-income
+// affordance of its own) so "add income" lives next to the list it
+// actually shows up in.
 let addIncomeFormOpen = false;
 
 function expectedLabel(dateStr, now) {
