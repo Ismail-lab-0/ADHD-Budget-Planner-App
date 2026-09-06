@@ -1,21 +1,42 @@
-// The UI shell: mounts the single Dashboard screen. See
-// docs/ARCHITECTURE.md §6 (`/ui/shell.js`).
+// The UI shell: mounts the current view into <main> and re-renders it on
+// every store change and every route change. See docs/ARCHITECTURE.md §6.
 //
-// There used to be a Dashboard/Money nav with hash-based routing; at the
-// user's explicit request that's gone — everything (Safe-to-Spend,
-// Income, Bills, Planned Expenses, Category Budgets, Savings, Safety
-// Buffer) now lives on one page (src/ui/screens/dashboard.js), so there's
-// nothing left to navigate between.
+// The app is a real multi-view application again (src/ui/router.js): the
+// sidebar (src/ui/components/sidebar.js) switches between dedicated
+// screens, each of which wraps its content in the shared app frame
+// (src/ui/components/app-frame.js — sidebar + header bar). Routing is
+// hash-based and completely independent of the store, so switching
+// views, refreshing, and Back/Forward never touch application data.
 
 import { el } from './dom.js';
 import { renderDashboard } from './screens/dashboard.js';
+import { renderIncomeView } from './screens/income-view.js';
+import { renderExpensesView } from './screens/expenses-view.js';
+import { renderBillsView } from './screens/bills-view.js';
+import { renderDebtsView } from './screens/debts-view.js';
+import { renderGoalsView } from './screens/goals-view.js';
+import { renderCategoriesView } from './screens/categories-view.js';
+import { renderSettingsView } from './screens/settings-view.js';
 import { renderOnboarding } from './screens/onboarding.js';
 import { openBrainDumpCapture } from './components/brain-dump.js';
+import { isSidebarDrawerOpen, isSidebarCollapsed } from './components/sidebar.js';
+import { getCurrentView, initViewRouter } from './router.js';
 import { hasCompletedOnboarding, getTheme, getCurrency } from '../modules/settings/index.js';
 import { setActiveCurrency } from '../core/money.js';
 
 // Form fields the global "N" shortcut below must never hijack typing in.
 const TYPING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+
+const VIEW_RENDERERS = {
+  dashboard: renderDashboard,
+  income: renderIncomeView,
+  expenses: renderExpensesView,
+  bills: renderBillsView,
+  debts: renderDebtsView,
+  goals: renderGoalsView,
+  categories: renderCategoriesView,
+  settings: renderSettingsView,
+};
 
 /**
  * @param {object} options
@@ -47,51 +68,47 @@ export function mountShell({ container, store, bus, persistenceUnavailable = fal
 
     // An explicit theme choice overrides the OS; 'system' (the default)
     // removes both classes so src/styles/base.css's `prefers-color-scheme`
-    // media query keeps driving it, same as before this existed. A class
-    // on <html>, not an attribute — the mechanism the theme system is
-    // documented to use (src/styles/base.css).
+    // media query keeps driving it. A class on <html>, not an attribute.
     const theme = getTheme(state);
     document.documentElement.classList.toggle('theme-dark', theme === 'dark');
     document.documentElement.classList.toggle('theme-light', theme === 'light');
 
-    // Same "set once at the top of this render pass" mechanism as theme
-    // above — every `formatCents` call made while building the tree below
-    // (onboarding or dashboard, and everything under them) picks this up
-    // implicitly, with no currency prop threaded through any of them. See
-    // src/core/money.js's `setActiveCurrency` doc comment for why.
+    // Set the active display currency once per render — every `formatCents`
+    // call while building the tree below picks it up implicitly. See
+    // src/core/money.js's `setActiveCurrency`.
     setActiveCurrency(getCurrency(state));
 
     main.innerHTML = '';
 
-    // A brief, skippable first-run flow takes over the whole screen (no
-    // other content — one focused task) until finished or skipped. Both
-    // are the same one-click action; see src/ui/screens/onboarding.js.
-    if (!hasCompletedOnboarding(state)) {
+    // Onboarding takes over the whole screen (no sidebar) until finished
+    // or skipped; the route is ignored while it's showing.
+    const onboarded = hasCompletedOnboarding(state);
+    if (!onboarded) {
       main.appendChild(renderOnboarding(screenProps));
     } else {
-      main.appendChild(renderDashboard(screenProps));
+      const renderView = VIEW_RENDERERS[getCurrentView()] || renderDashboard;
+      main.appendChild(renderView(screenProps));
     }
 
-    // Background scroll-lock, derived fresh on every render from whether
-    // a popup (src/ui/components/popup.js) is actually present in the
-    // rebuilt tree — not tracked via open/close event bookkeeping, which
-    // broke the moment a popup's form submitted (closing it through a
-    // path that never restored `overflow` — see popup.js's doc comment).
-    // Since every dispatch triggers this render regardless of how a
-    // popup closed, this one line self-corrects every time.
-    document.body.style.overflow = main.querySelector('.modal-backdrop') ? 'hidden' : '';
+    // The sidebar (src/ui/components/sidebar.js) is `position: fixed` and
+    // its collapsed / drawer-open state is ephemeral module state; the
+    // CSS keys off these <body> classes so `.app-main` can offset for the
+    // rail and the mobile scrim can show/hide.
+    document.body.classList.toggle('has-sidebar', onboarded);
+    document.body.classList.toggle('sidebar-collapsed', onboarded && isSidebarCollapsed());
+    document.body.classList.toggle('sidebar-drawer-open', onboarded && isSidebarDrawerOpen());
+
+    // Background scroll-lock, derived fresh every render from whether a
+    // popup (src/ui/components/popup.js) is present — plus the mobile nav
+    // drawer, which locks scroll the same way.
+    const lockScroll = main.querySelector('.modal-backdrop') || (onboarded && isSidebarDrawerOpen());
+    document.body.style.overflow = lockScroll ? 'hidden' : '';
   }
 
-  // Global "N" shortcut — opens Brain Dump capture from anywhere in the
-  // app (docs/PRODUCT.md doesn't list this, but it's the same capture
-  // popup the header's persistent "+ Brain dump" button opens, not a
-  // separate affordance — see src/ui/components/brain-dump.js). Attached
-  // once here, at mount time (mountShell runs once per app lifetime, see
-  // src/main.js), not inside render() — render() reruns on every store
-  // change, so a listener added there would pile up a new one each time.
-  // Guarded against hijacking real typing (any focused form field) and
-  // against firing during onboarding, which has no header bar for the
-  // popup to visually belong to.
+  // Global "N" shortcut — opens Brain Dump capture from anywhere (the same
+  // popup the header's "+ Brain dump" button opens). Attached once, at
+  // mount time. Guarded against hijacking typing and against firing
+  // during onboarding.
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'n' && event.key !== 'N') return;
     if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -101,6 +118,14 @@ export function mountShell({ container, store, bus, persistenceUnavailable = fal
     if (!hasCompletedOnboarding(store.getState())) return;
     event.preventDefault();
     openBrainDumpCapture(render);
+  });
+
+  // Route changes (sidebar clicks set location.hash; Back/Forward change
+  // it too) re-render and scroll the new view to the top — docs/PRODUCT.md
+  // §15/§17. Application data is untouched by any of this.
+  initViewRouter(() => {
+    render();
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
   });
 
   store.subscribe(render);

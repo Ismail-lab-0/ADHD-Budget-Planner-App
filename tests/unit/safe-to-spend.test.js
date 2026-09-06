@@ -43,14 +43,15 @@ describe('1. no commitments', () => {
 });
 
 describe('2. bills only', () => {
-  test('does not subtract an unpaid bill — bills only reduce Safe-to-Spend once marked paid (see §2/§6)', () => {
+  test('subtracts an active, unpaid bill due before payday ("Bills still to land")', () => {
     const state = baseState({
       budget: { currentBalanceCents: 100000, savingsAllocationCents: 0 },
       bills: [bill({ amountCents: 30000 })],
     });
     const result = getSafeToSpend(state, { now: NOW });
-    assert.equal(result.upcomingBillsCents, 30000); // still computed, display-only
-    assert.equal(result.safeToSpendCents, 100000); // unaffected until paid
+    assert.equal(result.upcomingBillsCents, 30000);
+    assert.equal(result.totalCommittedCents, 30000);
+    assert.equal(result.safeToSpendCents, 70000); // 100000 − 30000
   });
 });
 
@@ -66,12 +67,56 @@ describe('3. planned expenses only', () => {
   });
 });
 
-describe('4. savings only', () => {
-  test('subtracts the savings allocation', () => {
+describe('4. savings figure (display-only — NOT subtracted, docs/SAFE-TO-SPEND.md §9)', () => {
+  test('the Savings allocation is echoed on the result but does not reduce Safe-to-Spend', () => {
     const state = baseState({ budget: { currentBalanceCents: 100000, savingsAllocationCents: 20000 } });
     const result = getSafeToSpend(state, { now: NOW });
-    assert.equal(result.savingsAllocationCents, 20000);
-    assert.equal(result.safeToSpendCents, 80000);
+    assert.equal(result.savingsAllocationCents, 20000); // still returned for display
+    assert.equal(result.totalCommittedCents, 0); // but not a committed term
+    assert.equal(result.safeToSpendCents, 100000); // unchanged by it
+  });
+});
+
+describe('4b. savings goals (protected, like Savings — docs/SAFE-TO-SPEND.md §3d)', () => {
+  test("a goal's 'already put away' amount is subtracted", () => {
+    const state = baseState({
+      budget: { currentBalanceCents: 100000, savingsAllocationCents: 0 },
+      goals: [{ id: 'g1', name: 'Laptop', targetCents: 150000, savedCents: 25000, monthlyPaceCents: null }],
+    });
+    const result = getSafeToSpend(state, { now: NOW });
+    assert.equal(result.goalsSavedCents, 25000);
+    assert.equal(result.totalCommittedCents, 25000);
+    assert.equal(result.safeToSpendCents, 75000);
+  });
+
+  test('goals subtract; the flat Savings figure does not (§9) — only goals reduce the number', () => {
+    const state = baseState({
+      budget: { currentBalanceCents: 100000, savingsAllocationCents: 20000 },
+      goals: [
+        { id: 'g1', name: 'A', targetCents: 100000, savedCents: 10000 },
+        { id: 'g2', name: 'B', targetCents: 100000, savedCents: 5000 },
+      ],
+    });
+    const result = getSafeToSpend(state, { now: NOW });
+    assert.equal(result.goalsSavedCents, 15000);
+    assert.equal(result.safeToSpendCents, 100000 - 15000); // savings 20000 NOT subtracted
+  });
+
+  test('a corrupted savedCents is skipped, not NaN-poisoning the result', () => {
+    const state = baseState({
+      budget: { currentBalanceCents: 50000, savingsAllocationCents: 0 },
+      goals: [{ id: 'g1', name: 'A', savedCents: 'oops' }, { id: 'g2', name: 'B', savedCents: 8000 }],
+    });
+    const result = getSafeToSpend(state, { now: NOW });
+    assert.equal(result.goalsSavedCents, 8000);
+    assert.equal(result.safeToSpendCents, 42000);
+  });
+
+  test('no goals — goalsSavedCents is 0, result unchanged', () => {
+    const state = baseState({ budget: { currentBalanceCents: 100000, savingsAllocationCents: 0 } });
+    const result = getSafeToSpend(state, { now: NOW });
+    assert.equal(result.goalsSavedCents, 0);
+    assert.equal(result.safeToSpendCents, 100000);
   });
 });
 
@@ -137,14 +182,14 @@ describe('7. income after payday (a later income never becomes the horizon)', ()
 });
 
 describe('8. multiple upcoming bills', () => {
-  test('upcomingBillsCents sums every active, unpaid bill within the horizon, but none of it is subtracted', () => {
+  test('upcomingBillsCents sums every active, unpaid bill within the horizon, and all of it is subtracted', () => {
     const state = baseState({
       budget: { currentBalanceCents: 200000, savingsAllocationCents: 0 },
       bills: [bill({ id: 'b1', amountCents: 30000, dueDate: '2026-08-22' }), bill({ id: 'b2', amountCents: 45000, dueDate: '2026-08-23' })],
     });
     const result = getSafeToSpend(state, { now: NOW });
     assert.equal(result.upcomingBillsCents, 75000);
-    assert.equal(result.safeToSpendCents, 200000);
+    assert.equal(result.safeToSpendCents, 125000); // 200000 − 75000
   });
 });
 
@@ -161,15 +206,15 @@ describe('9. recurring income', () => {
 });
 
 describe('10. recurring bills', () => {
-  test('a stale recurring bill rolls forward and still counts if the new date is within the horizon', () => {
+  test('a stale recurring bill rolls forward and is subtracted if within the horizon', () => {
     const state = baseState({
       budget: { currentBalanceCents: 100000, savingsAllocationCents: 0 },
       incomes: [income({ nextDate: '2026-08-30', frequency: 'one-time' })],
       bills: [bill({ amountCents: 40000, dueDate: '2026-07-21', recurrence: 'monthly' })], // rolls to 2026-08-21
     });
     const result = getSafeToSpend(state, { now: NOW });
-    assert.equal(result.upcomingBillsCents, 40000); // 2026-08-21 <= horizon 2026-08-30 — still counted for display
-    assert.equal(result.safeToSpendCents, 100000); // unaffected — unpaid bills don't subtract
+    assert.equal(result.upcomingBillsCents, 40000); // 2026-08-21 <= horizon 2026-08-30 — counted
+    assert.equal(result.safeToSpendCents, 60000); // 100000 − 40000
   });
 
   test('a monthly bill rolled forward beyond a tight horizon is excluded', () => {
@@ -205,22 +250,32 @@ describe('11. paid bill', () => {
   });
 });
 
-// These next few sections deliberately drive the result negative/zero/
-// decimal via planned expenses rather than bills — as of the "bills only
-// reduce Safe-to-Spend once marked paid" change (§2/§6), an unpaid bill
-// can no longer push the number down at all, so it can't stand in for
-// "a commitment that subtracts" here anymore. Planned expenses still
-// subtract unconditionally, so they exercise the same negative/zero/
-// decimal contract this section is actually about.
-describe('12. negative Safe-to-Spend', () => {
-  test('commitments exceeding the balance produce a true negative result, not clamped to zero', () => {
+// These next few sections drive the result negative/zero/decimal via
+// planned expenses rather than bills — an unpaid bill no longer pushes
+// the number down at all (§2/§7), so it can't stand in for "a commitment
+// that subtracts" here. Planned expenses still subtract unconditionally,
+// so they exercise the same negative/zero/cent-precision contract.
+describe('12. over-committed Safe-to-Spend (floored at 0)', () => {
+  test('commitments exceeding the balance floor safeToSpendCents to 0, with the overage on netAfterCommittedCents', () => {
     const state = baseState({
       budget: { currentBalanceCents: 10000, savingsAllocationCents: 0 },
       plannedExpenses: [plannedExpense({ amountCents: 50000 })],
     });
     const result = getSafeToSpend(state, { now: NOW });
-    assert.equal(result.safeToSpendCents, -40000);
-    assert.equal(result.isNegative, true);
+    assert.equal(result.safeToSpendCents, 0); // floored — never negative (docs/SAFE-TO-SPEND.md §10)
+    assert.equal(result.netAfterCommittedCents, -40000); // true position still reported
+    assert.equal(result.isNegative, true); // means "over-committed / floored"
+  });
+
+  test('the daily allowance derives from the floored value, so it is never negative', () => {
+    const state = baseState({
+      budget: { currentBalanceCents: 10000, savingsAllocationCents: 0 },
+      incomes: [income({ nextDate: '2026-08-31' })],
+      plannedExpenses: [plannedExpense({ amountCents: 50000 })],
+    });
+    const result = getSafeToSpend(state, { now: NOW });
+    assert.equal(result.safeToSpendCents, 0);
+    assert.equal(result.dailyAllowanceCents, 0);
   });
 
   test('getSafeToSpendMessage returns neutral, non-judgmental copy stating the overage', () => {
@@ -244,7 +299,7 @@ describe('13. zero Safe-to-Spend', () => {
     const result = getSafeToSpend(state, { now: NOW });
     assert.equal(result.safeToSpendCents, 0);
     assert.equal(result.isNegative, false);
-    assert.match(getSafeToSpendMessage(result), /already committed/);
+    assert.match(getSafeToSpendMessage(result), /committed/);
   });
 });
 
@@ -255,8 +310,10 @@ describe('14. decimal amounts', () => {
       plannedExpenses: [plannedExpense({ amountCents: 20 })], // -$0.20
     });
     // $0.10 - $0.20 in naive float math risks drift; in integer cents it's exact.
+    // safeToSpendCents floors at 0 (§10); the exact -$0.10 position shows on netAfterCommittedCents.
     const result = getSafeToSpend(state, { now: NOW });
-    assert.equal(result.safeToSpendCents, -10);
+    assert.equal(result.safeToSpendCents, 0);
+    assert.equal(result.netAfterCommittedCents, -10);
   });
 
   test('a realistic decimal scenario matches hand-calculated cents exactly', () => {
@@ -265,7 +322,7 @@ describe('14. decimal amounts', () => {
       plannedExpenses: [plannedExpense({ amountCents: 9999 })], // $99.99
     });
     const result = getSafeToSpend(state, { now: NOW });
-    assert.equal(result.safeToSpendCents, 245099 - 9999 - 12345);
+    assert.equal(result.safeToSpendCents, 245099 - 9999); // savings 12345 is display-only, not subtracted (§9)
   });
 });
 
@@ -300,27 +357,28 @@ describe('16. multiple expense sources', () => {
     assert.equal(result.safeToSpendCents, 165000);
   });
 
-  test('bills contribute $0 to the arithmetic (display-only); only planned expenses subtract', () => {
+  test('planned expenses and unpaid bills both subtract; the Savings figure does not', () => {
     const state = baseState({
       budget: { currentBalanceCents: 300000, savingsAllocationCents: 0 },
       bills: [bill({ amountCents: 50000 })],
       plannedExpenses: [plannedExpense({ amountCents: 25000 })],
     });
     const result = getSafeToSpend(state, { now: NOW });
-    assert.equal(result.upcomingBillsCents, 50000); // display-only
-    assert.equal(result.safeToSpendCents, 275000); // 300000 - 25000; the bill is excluded until paid
+    assert.equal(result.upcomingBillsCents, 50000);
+    assert.equal(result.safeToSpendCents, 225000); // 300000 − 50000 − 25000
   });
 });
 
-describe('16a. totalCommittedCents (display-only, see docs/SAFE-TO-SPEND.md §11b)', () => {
-  test('is the exact sum of planned expenses + savings — bills are excluded (§2/§6)', () => {
+describe('16a. totalCommittedCents (see docs/SAFE-TO-SPEND.md §11b)', () => {
+  test('is the exact sum of upcoming bills + planned expenses + goals — only the Savings figure (§9) is excluded', () => {
     const state = baseState({
       budget: { currentBalanceCents: 300000, savingsAllocationCents: 20000 },
       bills: [bill({ amountCents: 50000 })],
       plannedExpenses: [plannedExpense({ amountCents: 25000 })],
+      goals: [{ id: 'g1', name: 'G', targetCents: 100000, savedCents: 8000 }],
     });
     const result = getSafeToSpend(state, { now: NOW });
-    assert.equal(result.totalCommittedCents, 25000 + 20000);
+    assert.equal(result.totalCommittedCents, 50000 + 25000 + 8000); // only savings 20000 excluded
     assert.equal(result.currentBalanceCents - result.totalCommittedCents, result.safeToSpendCents);
   });
 
@@ -388,7 +446,7 @@ describe('18. missing optional values', () => {
 });
 
 describe('no active income at all -> unbounded horizon (conservative default)', () => {
-  test('every unpaid bill and planned expense is still recognized regardless of date, but only planned expenses actually subtract', () => {
+  test('with no payday to anchor to, every planned expense AND every unpaid bill is subtracted regardless of date', () => {
     const state = baseState({
       budget: { currentBalanceCents: 500000, savingsAllocationCents: 0 },
       bills: [bill({ amountCents: 10000, dueDate: '2027-06-01' })], // far in the future
@@ -396,15 +454,15 @@ describe('no active income at all -> unbounded horizon (conservative default)', 
     });
     const result = getSafeToSpend(state, { now: NOW });
     assert.equal(result.nextPaydayDate, null);
-    assert.equal(result.upcomingBillsCents, 10000); // display-only
+    assert.equal(result.upcomingBillsCents, 10000);
     assert.equal(result.plannedExpensesCents, 5000);
-    assert.equal(result.safeToSpendCents, 495000); // 500000 - 5000; the bill is excluded until paid
+    assert.equal(result.safeToSpendCents, 485000); // 500000 − 10000 − 5000
   });
 });
 
 describe('product wording', () => {
-  test('the label is always framed as an estimate, never a definite claim', () => {
-    assert.equal(SAFE_TO_SPEND_LABEL, 'Estimated safe to spend');
+  test('the label is the payday-based headline', () => {
+    assert.equal(SAFE_TO_SPEND_LABEL, 'Safe to spend today');
   });
 
   test('the planning disclaimer states the app does not connect to or verify bank accounts', () => {
@@ -427,9 +485,9 @@ describe('cross-check against docs/PRODUCT.md §6 illustrative example', () => {
     };
     const result = getSafeToSpend(state, { now: NOW });
     assert.equal(result.currentBalanceCents, 245000);
-    assert.equal(result.upcomingBillsCents, 120000); // display-only, not subtracted until paid
+    assert.equal(result.upcomingBillsCents, 120000); // subtracted — "Bills still to land"
     assert.equal(result.plannedExpensesCents, 30000);
-    assert.equal(result.savingsAllocationCents, 20000);
-    assert.equal(result.safeToSpendCents, 195000); // matches the documented $1,950 — bills excluded until paid
+    assert.equal(result.savingsAllocationCents, 20000); // display-only, a separate-account figure (§9)
+    assert.equal(result.safeToSpendCents, 95000); // 245000 − 120000 − 30000; the documented $950 (savings NOT subtracted)
   });
 });

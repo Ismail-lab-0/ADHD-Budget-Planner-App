@@ -18,7 +18,7 @@ Everything lives under a single `localStorage` key, e.g.
 
 ```jsonc
 {
-  "schemaVersion": 8,
+  "schemaVersion": 10,
   "meta": {
     "createdAt": "2026-08-19T00:00:00.000Z",
     "lastOpenedAt": "2026-08-19T00:00:00.000Z"
@@ -32,7 +32,10 @@ Everything lives under a single `localStorage` key, e.g.
   "categoryBudgets": [ /* CategoryBudget[] */ ],
   "incomeReceipts": [ /* IncomeReceipt[] */ ],
   "billPayments": [ /* BillPayment[] */ ],
-  "expenseDrafts": [ /* ExpenseDraft[] */ ]
+  "expenseDrafts": [ /* ExpenseDraft[] */ ],
+  "debts": [ /* Debt[] */ ],
+  "debtPayments": [ /* DebtPayment[] */ ],
+  "goals": [ /* Goal[] */ ]
 }
 ```
 
@@ -82,21 +85,24 @@ Notes:
 ```jsonc
 {
   "currentBalanceCents": "any-sign integer, defaults to 0 — see §3a Current Balance model",
-  "savingsAllocationCents": "integer >= 0, defaults to 0 — money protected from discretionary spending, feature #6"
+  "savingsAllocationCents": "integer >= 0, defaults to 0 — a separate savings-account balance the user tracks for reference; NOT subtracted from Safe-to-Spend (docs/SAFE-TO-SPEND.md §9), feature #6"
 }
 ```
 
-The Savings card's form (`addToSavingsAction`) **adds** each entered amount
-to the existing `savingsAllocationCents` rather than replacing it — each
-submission is a contribution, not a correction, so repeated use
-accumulates a running total. `setSavingsAllocationAction` (an absolute
-replace) still exists and is still used by onboarding's initial savings
-target, where there's nothing yet to add to — and also by a small pencil
-icon next to the Savings card's "Currently saved: $X" line
-(`src/ui/components/single-value-section.js`'s `onEditTotal`), which opens
-a popup to correct the total directly (fixing a mistaken contribution, or
-reconciling against a real account) without going through the
-add-only path.
+Two actions change `savingsAllocationCents`, with different consequences:
+
+- **`addToSavingsAction`** (`'budget/add-to-savings'`, the sidebar footer
+  Savings row's "+" button) is a **real transfer**: it adds the amount to
+  `savingsAllocationCents` **and** debits `budget.currentBalanceCents` by
+  the same amount, atomically, via a cross-slice special case in
+  `src/main.js`'s `rootReducer` (the fifth use of that pattern — see §3a).
+  So moving money into savings lowers Safe-to-Spend, once, exactly like
+  logging an Expense.
+- **`setSavingsAllocationAction`** (`'budget/set'`, used by onboarding's
+  savings step and the sidebar footer's pencil) is an **absolute
+  replace** with **no balance effect** — a plain record edit for fixing a
+  mistake or reconciling against a real account. Neither Current Balance
+  nor Safe-to-Spend moves.
 
 ## 3a. Current Balance model
 
@@ -104,8 +110,8 @@ Phase 5 required picking exactly one model for what Current Balance means
 and documenting it — this is that decision.
 
 **Current Balance is a user-set checkpoint, automatically adjusted by
-logged Expenses, by Income once confirmed received, and by Bills once
-confirmed paid.** Concretely:
+logged Expenses, by Income once confirmed received, by Bills once
+confirmed paid, and by moving money into Savings.** Concretely:
 
 - The user can set `currentBalanceCents` directly at any time (the
   existing editor from Phase 2) — this represents "as of right now, I
@@ -131,15 +137,17 @@ confirmed paid.** Concretely:
   its `nextDate` to the next cycle, so it never gets permanently "stuck"
   — see `src/modules/incomes/reducer.js`.
 - Marking a `Bill` **paid** (`toggleBillPaidAction`, the "Mark paid"
-  button on the "Bills due soon" card) **automatically debits** the
-  balance by its amount; toggling it back to unpaid refunds it. Originally
-  added to fix a real reported bug (see `docs/SAFE-TO-SPEND.md` §7 for that
-  history); **as of a later, explicit user request, this debit is now the
-  *only* way a Bill affects Safe-to-Spend at all** — an unpaid bill,
-  however soon it's due, has zero effect (`docs/SAFE-TO-SPEND.md` §2).
-  Marking paid also logs a `BillPayment` (see that entity below) — the
-  same idea as `IncomeReceipt`, the Bill side of it — un-marking removes
-  that log entry again, undoing it.
+  button) **automatically debits** the balance by its amount; toggling it
+  back to unpaid refunds it. An **unpaid** bill due on/before the payday
+  horizon *is* subtracted from Safe-to-Spend as a committed term
+  (`docs/SAFE-TO-SPEND.md` §2 — "Bills still to land"), so "Mark paid" is
+  **net zero on Safe-to-Spend**: the bill's amount moves out of the
+  committed subtraction and into this balance debit at the same time
+  (§7). Marking paid also logs a `BillPayment` (see that entity below);
+  un-marking removes that log entry again. (Whether unpaid bills are a
+  committed term has flip-flopped five times — see
+  `docs/SAFE-TO-SPEND.md` §2's history note; the current, user-requested
+  state is "subtracted while unpaid".)
 - **Both Income and Bills are scoped narrower than Expenses**: editing or
   deleting an income/bill that was already marked received/paid does
   **not** retroactively adjust the balance (a recurring income doesn't
@@ -150,12 +158,22 @@ confirmed paid.** Concretely:
   aren't linked. Use one or the other for a given payment, not both. If
   either limitation needs to change later, that's a product decision, not
   a bug fix.
+- Moving money into **Savings** (`addToSavingsAction` /
+  `'budget/add-to-savings'`, the sidebar footer's "+" button)
+  **automatically debits** the balance by the transferred amount, in the
+  same state transition that raises `savingsAllocationCents`. This is the
+  one savings action with a balance effect — *correcting* the Savings
+  figure (`setSavingsAllocationAction`) is a plain record edit and
+  changes nothing else. Like Income/Bills, it's narrower than Expenses:
+  there's no "undo transfer" that re-credits the balance, and editing the
+  figure afterward doesn't retroactively adjust anything. See
+  `docs/SAFE-TO-SPEND.md` §9.
 - Planned Expenses still don't auto-deduct when due (they're *upcoming*,
   not yet spent — there's no "mark fulfilled" action for them). This keeps
   scope narrow, consistent with `docs/PRODUCT.md` §5's non-goal: "not a
-  full accounting/double-entry bookkeeping system" — three specific,
-  deliberate automatic effects above, not universal auto-deduction for
-  everything. `IncomeReceipt`/`BillPayment` (below) *are* now a real
+  full accounting/double-entry bookkeeping system" — four specific,
+  deliberate automatic effects above (Expense, Income received, Bill
+  paid, Savings transfer), not universal auto-deduction for everything. `IncomeReceipt`/`BillPayment` (below) *are* now a real
   received/paid transaction history in one narrow sense — they exist
   purely to make the "This Period" card's "Money in"/"Money out" honest
   (only counting what's actually happened, not what's merely scheduled or
@@ -164,23 +182,17 @@ confirmed paid.** Concretely:
   `currentBalanceCents` directly) and not retroactively adjusted by a
   later edit/delete, per the point above. Still not a full ledger in the
   accounting sense.
-- **One deliberate exception, scoped to onboarding only**
-  (`src/ui/screens/onboarding.js`'s "Current balance & savings" step):
-  when *both* a balance and a savings amount are entered together there,
-  the stored `currentBalanceCents` is the sum of the two
-  (`enteredBalance + enteredSavings`), not `enteredBalance` alone. This is
-  the one place in the app where Current Balance and Savings aren't
-  independent inputs — the reasoning is that during initial setup, the
-  user is describing their *current* real-world state: the balance figure
-  they type already has the reported savings set aside, separately, not
-  sitting inside it waiting to be subtracted. Storing it as typed and then
-  also subtracting it via `savingsAllocationCents` in the Safe-to-Spend
-  formula would remove that amount twice; adding it back into the stored
-  balance cancels that out, so Safe-to-Spend nets back to exactly the
-  balance figure the user reported, not that figure minus their own
-  savings again. Everywhere else in the app — editing Current Balance
-  directly, or adding to Savings via its own card — the two stay fully
-  independent, per the model described above.
+- **Current Balance and Savings are always independent inputs**, in
+  onboarding included. What the user types as their balance is stored as
+  their balance; the Savings figure is a separate savings-account balance
+  tracked for reference and is **not** subtracted from Safe-to-Spend
+  (`docs/SAFE-TO-SPEND.md` §9) — only an explicit "Add to savings"
+  transfer (which debits Current Balance) moves the number. So entering
+  $1,000 balance and $12,000 savings in onboarding leaves Safe-to-Spend
+  at $1,000. (Two earlier builds behaved differently: one folded
+  `enteredBalance + enteredSavings` into the stored balance; a later one
+  stored them separately but still subtracted the Savings figure as a
+  committed term. Both were changed at the user's request.)
 
 **Why not the alternative ("purely manually maintained, expenses/income
 are just a separate log"):** that model would require the user to log an
@@ -198,20 +210,21 @@ already established for a negative Safe-to-Spend result. `getSafeToSpend`
 reads a negative balance correctly (via `isValidBalanceCents`, not the
 stricter non-negative `isValidAmountCents` other fields use).
 
-Mechanically: all three cross-slice effects (an `expenses/*` action
-touching both the `expenses` slice and `budget.currentBalanceCents`; the
-single `incomes/mark-received` action touching `incomes`,
-`budget.currentBalanceCents`, **and** `incomeReceipts`; or the single
+Mechanically: every cross-slice effect (an `expenses/*` action touching
+both the `expenses` slice and `budget.currentBalanceCents`; the single
+`incomes/mark-received` action touching `incomes`,
+`budget.currentBalanceCents`, **and** `incomeReceipts`; the single
 `bills/toggle` action with `field: 'paid'` touching `bills`,
-`budget.currentBalanceCents`, **and** `billPayments`) are computed by
-`src/modules/expenses/balance-effect.js` / `src/modules/incomes/
-balance-effect.js` + `src/modules/income-receipts/create-receipt.js` /
-`src/modules/bills/balance-effect.js` + `src/modules/bill-payments/
-create-payment.js` respectively (pure — each only decides *what changed*)
-and applied atomically by `src/main.js`'s `rootReducer` (the one place
-with visibility into every slice a given action touches), so nothing ever
-drifts out of sync and the store's subscribers see one consistent update,
-not several.
+`budget.currentBalanceCents`, **and** `billPayments`; `debts/record-payment`
+touching `debts`, `expenses`, `debtPayments`, **and**
+`budget.currentBalanceCents`; and `budget/add-to-savings` touching
+`budget.savingsAllocationCents` **and** `budget.currentBalanceCents`) is
+computed by the module's own pure `*-effect.js` / `create-*.js` helper
+(each only decides *what changed*) and applied atomically by
+`src/main.js`'s `rootReducer` (the one place with visibility into every
+slice a given action touches), so nothing ever drifts out of sync and the
+store's subscribers see one consistent update, not several. The full list
+is in `docs/ARCHITECTURE.md` §7.
 
 ### Income
 
@@ -452,6 +465,130 @@ draft never touches `budget.currentBalanceCents` on its own — only the
 real `Expense` created by a successful conversion does, through the
 existing Expense balance effect (§3a).
 
+### Debt
+
+A balance the user is paying down over time — a credit card, a loan, a
+line of credit. Added ahead of `docs/ROADMAP.md`'s phase order at the
+user's explicit request (same as "Brain dump" before it). **Deliberately
+not a full debt-management tool** (no avalanche/snowball/refinance
+calculators — `docs/PRODUCT.md` §4): it answers "how much do I owe,
+what's due, am I making progress?" and stops there.
+
+```jsonc
+{
+  "id": "d_...",
+  "name": "string, required — e.g. 'Visa Card'",
+  "originalBalanceCents": "integer >= 0, required — the starting balance, needed for the payoff-progress bar",
+  "currentBalanceCents": "integer >= 0, required — still owed; decreased by a recorded payment, never allowed below 0",
+  "minimumPaymentCents": "integer >= 0, required",
+  "dueDate": "integer 1–31, required — the day of the month the payment is due (not a YYYY-MM-DD; debt payments are treated as monthly-recurring for scheduling — see below)",
+  "interestRate": "number >= 0 | null, optional — APR as a percent, e.g. 19.99; null means 'not entered' (the user is never forced to supply one). 0 is a valid, distinct value.",
+  "paymentFrequency": "'monthly' | 'biweekly' | 'weekly', defaults to 'monthly' — used only to normalize the minimum payment for the payoff estimate; scheduling always rolls monthly",
+  "createdAt": "ISO timestamp",
+  "updatedAt": "ISO timestamp"
+}
+```
+
+- **`currentBalanceCents` can never go negative.** `recordDebtPaymentAction`
+  clamps it at 0 — an over-payment (paying more than remains) zeroes the
+  debt but still logs an `Expense` for the full amount that actually left
+  the account (`docs/SAFE-TO-SPEND.md` §3c — "never lie about the
+  number").
+- **Excluded from the Safe-to-Spend calculation by construction** —
+  `getSafeToSpend` never reads `state.debts`. See `docs/SAFE-TO-SPEND.md`
+  §3c: only the `Expense` a payment logs moves the number, exactly once,
+  never the debt balance itself. Same treatment as `CategoryBudget`.
+- **Payoff progress** (`getDebtProgress`) is
+  `(originalBalanceCents - currentBalanceCents) / originalBalanceCents`,
+  clamped to 0–100%. **Payoff estimate** (`estimatePayoff`) is a rough
+  amortization projection shown only when an APR is provided, always
+  clearly labelled an estimate; if the payment doesn't cover one month's
+  interest, no date is shown (a calm note instead), never an impossible
+  one.
+- **Scheduling / "Bills due soon":** a debt's minimum payment surfaces in
+  the existing "Bills due soon" card (`docs/PRODUCT.md` §8) as an
+  ordinary-looking row with a "Make payment" action. `dueDate` (a
+  day-of-month) resolves to the next such day on/after today, clamped to
+  a short month's last day. `paymentFrequency` of weekly/biweekly still
+  shows one row per month here — a deliberate simplification, since this
+  is a budget planner, not a debt-management app. A debt already paid for
+  the current calendar month (a `DebtPayment` dated in it) drops off the
+  card, mirroring how a paid Bill does.
+- Editing or deleting a debt does **not** retroactively adjust Current
+  Balance, and deleting a debt does **not** delete the `Expense` records
+  its past payments created (`docs/PRODUCT.md` §6) — the same "confirm
+  the event, don't keep a reconciling ledger" scoping already documented
+  for Bills and Income in §3a.
+
+### DebtPayment
+
+An automatic log record appended every time `recordDebtPaymentAction`
+runs — the Debt-side counterpart to `BillPayment`/`IncomeReceipt`, same
+shape and reasoning (a read-only history, not a user-facing CRUD
+entity).
+
+```jsonc
+{
+  "id": "dp_...",
+  "debtId": "string — the Debt this payment came from",
+  "name": "string — the debt's name at the time, denormalized so it still displays if the Debt is later renamed or deleted",
+  "amountCents": "integer >= 0",
+  "date": "YYYY-MM-DD — the payment date (defaults to today, user-editable in the payment form)",
+  "expenseId": "string | null — the Expense this payment created, for reconciliation",
+  "createdAt": "ISO timestamp"
+}
+```
+
+Used to answer "has this debt already been paid this month?" (so it drops
+off "Bills due soon" — `hasDebtPaymentInMonth`). Not summed into the
+"This Period" card's "Money out": the payment is already an `Expense`,
+counted there through that — adding the `DebtPayment` too would
+double-count. Not retroactively removed if the linked Expense is later
+deleted (same narrow scoping as `BillPayment`).
+
+### Goal
+
+A savings goal — a named money target the user is putting money aside
+for over time (an emergency fund, a new laptop). Added at the user's
+explicit request, reworking the former Budget tab into a Goals tab;
+ahead of `docs/ROADMAP.md`'s phase order, same footing as Debt Tracking
+and Brain Dump. Distinct from the retired "ADHD Life Planner"
+life-planning goals (`docs/PRODUCT.md` §5) — this is a budgeting
+concept: money, not aspirations.
+
+```jsonc
+{
+  "id": "g_...",
+  "name": "string — what the goal is for, required, non-empty",
+  "targetCents": "integer >= 0 — the total amount needed",
+  "savedCents": "integer >= 0 — how much is put away toward it so far",
+  "monthlyPaceCents": "integer >= 0 | null — roughly how much the user plans to add each month; optional",
+  "createdAt": "ISO timestamp",
+  "updatedAt": "ISO timestamp"
+}
+```
+
+- **A goal's `savedCents` reduces Safe-to-Spend** — it's protected,
+  committed money, subtracted in `totalCommittedCents` exactly like
+  `budget.savingsAllocationCents` (`docs/SAFE-TO-SPEND.md` §3d). This is
+  the one difference from Debts / Category Budgets, which are
+  informational only. Savings and Goals are two *separate* buckets: a
+  user should treat goal money as distinct from the general Savings
+  figure, not enter the same dollars in both.
+- **No cross-slice effect.** Creating / editing / deleting a goal never
+  touches `budget.currentBalanceCents` (again, exactly like setting the
+  Savings figure) — the money moves in Safe-to-Spend purely because the
+  formula reads `state.goals` on every calculation. There is no "add to
+  this goal from my balance" action; `savedCents` is a field the user
+  sets directly.
+- `monthlyPaceCents` feeds only the display ("~$200/month · about N
+  months to go" — `getGoalProgress`'s `monthsToGo`, a simple
+  `ceil(remaining / pace)`). It never affects Safe-to-Spend or any
+  schedule.
+- `getGoalProgress` derives `percentSaved` (clamped 0–100),
+  `remainingCents`, `isReached`, and `monthsToGo` fresh — nothing about
+  progress is stored.
+
 ### Settings
 
 ```jsonc
@@ -506,8 +643,8 @@ preferences.
 ## 4. Derived vs. stored data
 
 - **Safe-to-Spend amount** — derived from `budget`, `bills`,
-  `plannedExpenses`, and `incomes` — see `docs/SAFE-TO-SPEND.md` for the
-  exact formula. Note that `budget.currentBalanceCents` is itself kept
+  `plannedExpenses`, `incomes`, and `goals` (each goal's `savedCents` is
+  a committed term) — see `docs/SAFE-TO-SPEND.md` for the exact formula. Note that `budget.currentBalanceCents` is itself kept
   automatically current by logged Expenses (§3a), so Safe-to-Spend never
   needs to read `expenses` directly — its effect is already folded into
   the balance by the time it's read.
@@ -539,7 +676,7 @@ per-module reimplementation (already built, Phase 0).
 
 ## 7. Schema versioning & migrations
 
-- `schemaVersion` is a plain incrementing integer, currently `8`.
+- `schemaVersion` is a plain incrementing integer, currently `10`.
 - **v1 → v2:** pre-pivot Task shape evolution (see git history) — no
   longer relevant to the current product but preserved in the migration
   chain for correctness (a v1 install still migrates through v2 on its way
@@ -573,6 +710,16 @@ per-module reimplementation (already built, Phase 0).
 - **v7 → v8 (Expense Drafts):** purely additive — adds the empty
   `expenseDrafts` collection, the data behind "Brain dump" quick capture.
   See "ExpenseDraft" above.
+- **v8 → v9 (Debt Tracking):** purely additive — adds the empty `debts`
+  and `debtPayments` collections. Existing users get `debts: []` /
+  `debtPayments: []` and see no data loss (§11). See "Debt" /
+  "DebtPayment" above.
+- **v9 → v10 (Goals — the Budget tab reworked into a Goals tab):** purely
+  additive — adds the empty `goals` collection. Existing users get
+  `goals: []` and see no data loss. See "Goal" above. Note: the *name*
+  `goals` also existed in the retired pre-pivot v2 shape (life-planning
+  goals) — v2 → v3 discards that entirely; this re-introduces `goals` as
+  an unrelated *savings* collection.
 - On load, the storage adapter reads the stored `schemaVersion` and runs
   every migration function in sequence up to the current version before
   the state reaches the store — mechanism unchanged, already built and

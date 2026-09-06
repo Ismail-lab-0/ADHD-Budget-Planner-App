@@ -42,6 +42,26 @@ describe('rootReducer', () => {
     // Creating a draft is not a money event — the balance is untouched.
     assert.equal(next.budget.currentBalanceCents, 5000);
   });
+
+  test('budget/add-to-savings is a cross-slice transfer: raises savings AND debits Current Balance atomically', () => {
+    const state = { budget: { currentBalanceCents: 100000, savingsAllocationCents: 5000 } };
+    const next = rootReducer(state, { type: 'budget/add-to-savings', amountCents: 20000 });
+    assert.equal(next.budget.savingsAllocationCents, 25000);
+    assert.equal(next.budget.currentBalanceCents, 80000); // debited by the same amount
+  });
+
+  test('budget/set (correcting the Savings figure) is NOT a transfer — the balance is left alone', () => {
+    const state = { budget: { currentBalanceCents: 100000, savingsAllocationCents: 5000 } };
+    const next = rootReducer(state, { type: 'budget/set', field: 'savingsAllocationCents', amountCents: 25000 });
+    assert.equal(next.budget.savingsAllocationCents, 25000);
+    assert.equal(next.budget.currentBalanceCents, 100000); // untouched
+  });
+
+  test('a rejected budget/add-to-savings (invalid amount) is a full no-op — no partial balance debit', () => {
+    const state = { budget: { currentBalanceCents: 100000, savingsAllocationCents: 5000 } };
+    assert.equal(rootReducer(state, { type: 'budget/add-to-savings', amountCents: -1 }), state);
+    assert.equal(rootReducer(state, { type: 'budget/add-to-savings', amountCents: 0 }), state);
+  });
 });
 
 describe('initAppState', () => {

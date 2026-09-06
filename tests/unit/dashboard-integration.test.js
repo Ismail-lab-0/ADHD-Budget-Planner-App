@@ -12,7 +12,7 @@ import { initAppState } from '../../src/main.js';
 import { createStorageAdapter } from '../../src/core/storage.js';
 import { getSafeToSpend } from '../../src/modules/safe-to-spend/index.js';
 import { getPeriodSummary } from '../../src/modules/dashboard/index.js';
-import { setCurrentBalanceAction, setSavingsAllocationAction } from '../../src/modules/budget/index.js';
+import { setCurrentBalanceAction, setSavingsAllocationAction, addToSavingsAction } from '../../src/modules/budget/index.js';
 import { createIncomeAction, markIncomeReceivedAction } from '../../src/modules/incomes/index.js';
 import { createBillAction, toggleBillPaidAction } from '../../src/modules/bills/index.js';
 import { createPlannedExpenseAction } from '../../src/modules/planned-expenses/index.js';
@@ -104,19 +104,19 @@ describe('Safe-to-Spend reflects every budget-affecting change, live through the
     assert.equal(summary.moneyInCents, 500000);
   });
 
-  test('adding a bill does NOT reduce Safe-to-Spend — bills only count once marked paid (docs/SAFE-TO-SPEND.md §2/§6)', () => {
+  test('adding an unpaid bill reduces Safe-to-Spend by its amount ("Bills still to land", §2/§7)', () => {
     const { store } = setup();
     store.dispatch(setCurrentBalanceAction(100000));
     store.dispatch(createBillAction({ name: 'Rent', amountCents: 60000 }, { now: NOW }));
-    assert.equal(getSafeToSpend(store.getState(), { now: NOW }).safeToSpendCents, 100000);
+    assert.equal(getSafeToSpend(store.getState(), { now: NOW }).safeToSpendCents, 40000); // 100000 − 60000
   });
 
-  test('marking a bill paid reduces Safe-to-Spend by exactly its amount — the first time it counts at all (regression test for a real reported request: bills should never subtract until "Mark paid" is clicked)', () => {
+  test('marking a bill paid is net zero on Safe-to-Spend — the amount moves from "committed" to a Current Balance debit', () => {
     const { store } = setup();
     store.dispatch(setCurrentBalanceAction(100000));
     store.dispatch(createBillAction({ name: 'Rent', amountCents: 60000 }, { now: NOW }));
     const before = getSafeToSpend(store.getState(), { now: NOW }).safeToSpendCents;
-    assert.equal(before, 100000); // unpaid — no effect yet
+    assert.equal(before, 40000); // already subtracted as an unpaid bill
 
     const bill = store.getState().bills[0];
     store.dispatch(toggleBillPaidAction(bill.id, { now: NOW }));
@@ -124,10 +124,10 @@ describe('Safe-to-Spend reflects every budget-affecting change, live through the
     const state = store.getState();
     assert.equal(state.budget.currentBalanceCents, 40000); // the balance absorbed the payment
     assert.equal(state.bills[0].paid, true);
-    assert.equal(getSafeToSpend(state, { now: NOW }).safeToSpendCents, 40000); // reduced by exactly the bill amount
+    assert.equal(getSafeToSpend(state, { now: NOW }).safeToSpendCents, 40000); // unchanged — it just moved from upcomingBills to the reduced balance
   });
 
-  test('un-marking a paid bill refunds the balance — and since an unpaid bill is never subtracted, Safe-to-Spend goes right back to the original balance', () => {
+  test('un-marking a paid bill is net zero too — the balance is refunded and the bill returns to "Bills still to land"', () => {
     const { store } = setup();
     store.dispatch(setCurrentBalanceAction(100000));
     store.dispatch(createBillAction({ name: 'Rent', amountCents: 60000 }, { now: NOW }));
@@ -138,7 +138,7 @@ describe('Safe-to-Spend reflects every budget-affecting change, live through the
     const state = store.getState();
     assert.equal(state.budget.currentBalanceCents, 100000); // refunded back to the original balance
     assert.equal(state.bills[0].paid, false);
-    assert.equal(getSafeToSpend(state, { now: NOW }).safeToSpendCents, 100000); // back to unaffected — unpaid bills aren't subtracted
+    assert.equal(getSafeToSpend(state, { now: NOW }).safeToSpendCents, 40000); // 100000 − 60000, exactly as before either toggle
   });
 
   test('marking a bill paid also logs a real BillPayment — the history "Money out" sums (docs/DATA-MODEL.md "BillPayment") — and un-marking it removes that same entry', () => {
@@ -181,10 +181,20 @@ describe('Safe-to-Spend reflects every budget-affecting change, live through the
     assert.equal(getSafeToSpend(store.getState(), { now: NOW }).safeToSpendCents, 75000);
   });
 
-  test('changing savings allocation reduces the result', () => {
+  test('correcting the Savings figure (setSavingsAllocationAction) does NOT change the result — it is display-only (§9)', () => {
     const { store } = setup();
     store.dispatch(setCurrentBalanceAction(100000));
     store.dispatch(setSavingsAllocationAction(20000));
+    assert.equal(getSafeToSpend(store.getState(), { now: NOW }).safeToSpendCents, 100000);
+    assert.equal(store.getState().budget.currentBalanceCents, 100000); // untouched — a set is a record edit, not a transfer
+  });
+
+  test('moving money into savings (addToSavingsAction) DOES reduce the result — it debits Current Balance', () => {
+    const { store } = setup();
+    store.dispatch(setCurrentBalanceAction(100000));
+    store.dispatch(addToSavingsAction(20000));
+    assert.equal(store.getState().budget.currentBalanceCents, 80000); // real transfer out of checking
+    assert.equal(store.getState().budget.savingsAllocationCents, 20000);
     assert.equal(getSafeToSpend(store.getState(), { now: NOW }).safeToSpendCents, 80000);
   });
 
@@ -202,11 +212,12 @@ describe('Safe-to-Spend reflects every budget-affecting change, live through the
     // Cross-check against a calculation built directly from the same
     // state's raw fields, independent of the engine's internal helpers —
     // if the UI ever started duplicating this arithmetic, a divergence
-    // here would be the signal. The bill is deliberately excluded from
-    // `expected` — unpaid bills no longer subtract (docs/SAFE-TO-SPEND.md
-    // §2/§6).
-    const expected = state.budget.currentBalanceCents - (30000 + 20000);
+    // here would be the signal. Committed terms: the $120,000 Rent bill
+    // (due before the 9/1 payday — §2/§7) + the $30,000 planned expense.
+    // The $20,000 Savings figure is display-only (§9); incoming income is
+    // never added (§3).
+    const expected = state.budget.currentBalanceCents - 120000 - 30000;
     assert.equal(result.safeToSpendCents, expected);
-    assert.equal(result.safeToSpendCents, 250000);
+    assert.equal(result.safeToSpendCents, 150000);
   });
 });

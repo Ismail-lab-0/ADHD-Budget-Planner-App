@@ -28,61 +28,69 @@ nothing here is "the obvious default," everything is a decision.
 
 ## 2. What is included
 
-Safe-to-Spend subtracts two things from Current Balance:
+Safe-to-Spend subtracts, from Current Balance, only what the user has
+already committed with a real, dated action or a deliberate set-aside:
 
-1. **Planned expenses** — known future spends due on or before the
-   horizon (or undated — see §6).
-2. **Savings allocation** — the flat amount the user has set aside,
-   always subtracted in full (not date-bound).
+1. **Upcoming bills** — active, unpaid bills due on or before the payday
+   horizon (or undated — see §6). "Bills still to land" in the hero
+   breakdown. See §7 for how "Mark paid" interacts with this (net zero).
+2. **Planned expenses** — known one-off future spends due on or before
+   the horizon (or undated — see §6).
+3. **Savings goals** — the sum of every `Goal.savedCents`, protected
+   money, always subtracted in full (see §3d — added with the Goals tab).
 
 ```
-Safe-to-Spend = Current Balance
-              − Planned Expenses (within horizon)
-              − Savings Allocation
+netAfterCommitted = Current Balance
+                  − Upcoming Bills (unpaid, within horizon)
+                  − Planned Expenses (within horizon)
+                  − Savings Goals (Σ savedCents)
+
+Safe-to-Spend     = max(0, netAfterCommitted)   ← floored at 0, see §10
 ```
 
-**Bills are deliberately not a term in this formula, at the user's
-explicit request** (superseding an earlier version of this document — see
-the note below). An unpaid bill has **zero** effect on Safe-to-Spend, no
-matter how soon it's due or how overdue it is; the only thing that moves
-the number is `toggleBillPaidAction` ("Mark paid"), which debits Current
-Balance directly (`src/modules/bills/balance-effect.js`,
-`docs/DATA-MODEL.md` §3a) — the same mechanism an Expense already uses.
-Once that happens, the bill's amount is already gone from
-`currentBalanceCents`, so it flows into `safeToSpendCents` the same way
-any other dollar in the checkpoint does, with no separate "upcoming
-bills" term needed. See §7 for the full account.
+**The flat Savings figure (`budget.savingsAllocationCents`) is NOT a
+term.** It is a *separate account balance* the user records for
+reference — money that was never inside Current Balance to begin with —
+so subtracting it would misrepresent a real checking balance (a $1,000
+balance shouldn't read as −$11,000 just because $12,000 sits in a
+savings account). `getSafeToSpend` still returns `savingsAllocationCents`
+for display, but it never enters the arithmetic. Moving money *into*
+savings is a real transfer (`budget/add-to-savings`, `src/main.js`) that
+debits `currentBalanceCents` directly — so it reaches Safe-to-Spend that
+way, once, exactly like an Expense or a paid Bill. See §9. **History:**
+through the Goals-tab work and earlier, the Savings figure *was* a flat
+always-on subtraction (paired with `goalsSavedCents` in §3d); it was
+removed as a term at the user's explicit request ("don't reduce the
+saving from the current balance… it's a separate account… when using the
+button to log, you can subtract"). Goals were kept as a subtraction (§3d)
+— the user chose to leave those protected.
 
-`getSafeToSpend` still computes `upcomingBillsCents` (the sum of active,
-unpaid bills due on or before the horizon) exactly as before, and still
-returns it — but purely as **display-only** information, the same
-treatment `upcomingIncomeCents` already gets (§11a). It is never part of
-`totalCommittedCents` or `safeToSpendCents`.
+**Unpaid bills ARE a term** ("Bills still to land"). `getSafeToSpend`
+computes `upcomingBillsCents` (active, unpaid bills due on/before the
+next payday, undated ones always) and folds it into `totalCommittedCents`.
+Marking a bill paid removes it from that sum *and* debits
+`budget.currentBalanceCents` by its amount
+(`src/modules/bills/balance-effect.js`, `docs/DATA-MODEL.md` §3a) — the
+amount just moves from "committed" to "already gone from the balance",
+**net zero on Safe-to-Spend** (§7). Un-marking reverses both. Unlike
+Income (§3), which is only ever informational, a scheduled unpaid bill
+*does* reduce the number.
 
-This differs from `docs/PRODUCT.md` §6's illustrative breakdown, which
-still shows an "Upcoming bills" line subtracted — that illustration
-predates this change and is explicitly marked non-final in that document;
-it is not re-drawn here since `docs/PRODUCT.md` §6 already carries its own
-caveat. The implementation is verified against a version of that example
-with the bills line adjusted to reflect this section — see
-`tests/unit/safe-to-spend.test.js`'s "cross-check against docs/PRODUCT.md
-§6" test. A fourth term, **Safety Buffer**, was part of this formula
-through Phase 9 and was removed at the user's explicit request — see §9
-for what changed and why no migration was needed.
+`docs/PRODUCT.md` §6's illustrative breakdown shows the "Upcoming bills"
+line subtracted. A separate term, **Safety Buffer**, was part of this
+formula through Phase 9 and was removed at the user's explicit request —
+see §9.
 
-**Why the change:** bills used to be treated as a committed, date-bound
-subtraction the moment they were created (mirroring Planned Expenses) —
-see the version of this section that shipped through the "'Money out'
-now means..." era of `CLAUDE.md`'s running log. The user asked, explicitly
-and directly, for bills to never reduce Safe-to-Spend until "Mark paid" is
-actually clicked — i.e. to be treated the same way Income already is
-(§3): informational until confirmed, real only once confirmed. This is a
-narrower, more conservative interpretation of "safe to spend right now"
-in one specific sense (a bill sitting unpaid no longer protects money
-against it in advance) and a stricter one in another (nothing is ever
-subtracted on the strength of a schedule alone, only on a real, dated,
-user-confirmed event) — consistent with §3's existing income-side
-reasoning, now applied symmetrically to the other side of the ledger.
+**History (flip-flop, for the record).** Bills were originally a
+committed, date-bound subtraction. Then made display-only at the user's
+explicit request (`AskUserQuestion`). Then re-added as committed when the
+hero adopted the payday-based framing. Then removed again ("don't
+subtract bills till it's marked paid"). Then **re-added — the current
+state — at the user's request** when the breakdown was reworked to the
+"In checking / Bills still to land / Paid and spent / Already set aside /
+Safe until payday" layout (`AskUserQuestion` confirmed the headline
+should drop by the unpaid-bills amount). That's five flips; this note is
+the running record.
 
 ## 3. What is excluded — upcoming income is never added
 
@@ -163,6 +171,68 @@ that creating/editing/deleting a category budget changes the
 Safe-to-Spend result by exactly `$0`, and that logging an expense against
 a budgeted category moves it by exactly its own amount — never twice.
 
+## 3c. Debts never affect Safe-to-Spend directly
+
+Debt Tracking (`docs/DATA-MODEL.md` "Debt", added ahead of
+`docs/ROADMAP.md`'s phase order at the user's explicit request) follows
+**exactly the same rule as Category Budgets (§3b), for the same
+anti-double-count reason.** `getSafeToSpend` does not read `state.debts`
+or `state.debtPayments`; `src/modules/debts/` has no import relationship
+with `src/modules/safe-to-spend/` in either direction.
+
+- A `Debt` record's `currentBalanceCents` is **informational only** — it
+  tells the user how much they still owe and drives the per-debt progress
+  bar and payoff estimate, nothing more. Merely owing a debt balance
+  does not reduce Safe-to-Spend (unlike a scheduled unpaid *Bill*, §2,
+  which does — a debt has no due-date schedule the calc could anchor to,
+  and its payments already flow through the Expense path below).
+- The **only** thing that moves Safe-to-Spend because of a debt is a
+  **payment**. `recordDebtPaymentAction` logs a real `Expense`
+  (`src/modules/debts/payment-effect.js`) — so the money is debited from
+  `budget.currentBalanceCents` once, through the ordinary Expense pathway
+  (`docs/DATA-MODEL.md` §3a), and flows into `safeToSpendCents` the same
+  way any other logged spend does. The debt's own balance dropping is a
+  *separate* bookkeeping fact the calculation never sees, so the same
+  dollar is never subtracted twice.
+- `tests/unit/debts-integration.test.js` proves a payment reduces
+  Safe-to-Spend by exactly its own amount, not twice that.
+
+## 3d. Savings goals DO affect Safe-to-Spend (protected)
+
+Savings goals (`docs/DATA-MODEL.md` "Goal", added when the Budget tab was
+reworked into a Goals tab, at the user's explicit request — and after
+confirming with `AskUserQuestion` that this should change the core
+number, not just a card) are the **one** set-aside tracker that reduces
+Safe-to-Spend by simply *existing*. A goal is money the user has
+deliberately earmarked, so it is subtracted from Safe-to-Spend as
+committed money:
+
+```
+totalCommittedCents = plannedExpensesCents + goalsSavedCents
+```
+
+where `goalsSavedCents` is the sum of every `Goal.savedCents` (skipping a
+corrupted value rather than NaN-poisoning the total — `sumGoalsSaved` in
+`src/modules/safe-to-spend/calculation.js`, a raw `state.goals` read, no
+import from `src/modules/goals/`).
+
+- **Only `savedCents` counts** — `targetCents` (the amount still *needed*)
+  and `monthlyPaceCents` never enter the arithmetic. Owing yourself a
+  goal is not the same as having funded it.
+- **No cross-slice effect, no balance debit.** Creating a goal does not
+  touch `budget.currentBalanceCents`. The money moves in Safe-to-Spend
+  purely because the formula re-reads `state.goals` every time.
+- **Goals ≠ the flat Savings figure.** They used to get identical
+  treatment (both flat subtractions). They diverged when the user asked
+  for the Savings figure to become a separate-account reference (§9): a
+  goal's `savedCents` is still subtracted here; `savingsAllocationCents`
+  is not. If the user's goal money overlaps money they *also* recorded in
+  "Savings", nothing double-counts anymore — only the goal side
+  subtracts.
+- `tests/unit/safe-to-spend.test.js` §4b proves each goal's `savedCents`
+  is subtracted once, that the flat Savings figure alongside it does
+  *not* subtract, and that a corrupted entry is skipped.
+
 ## 4. Date boundaries — the horizon
 
 The **horizon** is the next payday date: the earliest upcoming occurrence
@@ -219,38 +289,32 @@ Each Bill record has a `recurrence` and a `dueDate`.
   (counts regardless of horizon) — the user has flagged it as owed, and
   without a date there's no basis to exclude it.
 
-## 7. How already-paid bills are handled
+## 7. How a bill affects Safe-to-Spend
 
-**This section describes a superseded design — kept for the historical
-account of a real reported bug and its fix, since §2 now describes a
-different, later formula.** Through the version of this formula that
-subtracted `upcomingBillsCents` as a committed term (§2's earlier
-revision), a bill with `paid: true` was excluded entirely from the
-calculation, on the presumption that the money had already left the
-account. Before `src/modules/bills/balance-effect.js` existed, nothing
-ever actually debited `currentBalanceCents` when a bill was marked
-paid — so excluding it from the subtracted total made `safeToSpendCents`
-visibly *increase* the moment a bill was marked paid, as if the money had
-"come back." The fix at the time was `toggleBillPaidAction` debiting
-Current Balance by the bill's amount in the same state transition, so the
-two changes canceled out by construction and `safeToSpendCents` didn't
-move when a bill was marked paid.
+An unpaid bill due on/before the horizon is **subtracted** as
+`upcomingBillsCents` (§2). Marking one paid (`toggleBillPaidAction`)
+does two things in the same state transition
+(`src/modules/bills/balance-effect.js`, `docs/DATA-MODEL.md` §3a): it
+debits `budget.currentBalanceCents` by the bill's amount, and the
+now-`paid` bill drops out of `upcomingBillsCents`. **These cancel:**
+Safe-to-Spend loses the "committed" subtraction but the balance it's
+computed from is lower by the same amount — **net zero**. Un-marking
+reverses both, also net zero. So a bill reduces Safe-to-Spend once, when
+it's created/becomes due (as an upcoming bill), and "Mark paid" is
+purely a bookkeeping move of that same amount from "committed" to "spent
+from the balance" — it never changes the headline.
 
-**As of the current formula (§2), that cancellation no longer applies,
-because there's nothing left to cancel against.** An unpaid bill was
-never subtracted in the first place, so there's no "committed" figure for
-a paid bill to be excluded from. What still applies, unchanged, is the
-underlying mechanism: marking a bill paid (`toggleBillPaidAction`) still
-debits Current Balance by its amount in the same state transition (see
-`docs/DATA-MODEL.md` §3a and `src/modules/bills/balance-effect.js`) — and
-un-marking it still refunds that debit. The *effect* on
-`safeToSpendCents` is now different, and simpler: marking a bill paid
-is the first and only time that bill's amount reduces Safe-to-Spend at
-all, by exactly its amount (via the balance debit, the same mechanism an
-Expense already uses) — not a cancellation of an earlier subtraction.
-`upcomingBillsCents` (whether the bill is currently unpaid, and its
-amount) plays no role in this at all anymore; it's purely a display-only
-figure (§2).
+This net-zero design is deliberate: without the balance debit, "Mark
+paid" would remove the bill from the subtracted total and `safeToSpendCents`
+would visibly *increase*, as if the money had "come back" (a real
+reported bug from an earlier build). With it, paying a bill you've
+already accounted for is a no-op on the number, which is what a user
+expects.
+
+**Scoping limitation:** editing or deleting an already-paid bill does not
+retroactively re-sync the balance, and marking a bill paid *and*
+separately logging a matching Expense both would double-deduct — Bills
+and Expenses aren't linked. Use one or the other per real payment.
 
 **Known limitation, unchanged by this history:** the data model tracks
 `paid` as a single flat boolean, not per-cycle. For a recurring bill,
@@ -275,16 +339,47 @@ planned expense counts against Safe-to-Spend if:
   bill (§6): conservatively always included, since there's no date to
   exclude it by.
 
-## 9. What the savings allocation does (and what safety buffer used to do)
+## 9. What the savings figure does (a separate-account balance, not a subtraction)
 
-`savingsAllocationCents` (`docs/DATA-MODEL.md` "Budget") is a flat,
-always-on subtraction — not tied to any date or horizon. It represents
-money the user has decided is *never* part of "safe to spend," full stop,
-regardless of how far away the next payday is. This is what makes it
-different from bills/planned expenses: those are time-bound commitments
-that stop counting once the next paycheck arrives; the savings allocation
-is a standing floor that never lifts on its own (the user changes it
-explicitly).
+`savingsAllocationCents` (`docs/DATA-MODEL.md` "Budget") is a number the
+user records for reference — how much is sitting in a *separate savings
+account*. It is **not** subtracted from Safe-to-Spend, and it is not
+folded into Current Balance either: the two are independent inputs, in
+onboarding included. `getSafeToSpend` returns it on the result so a UI
+can display it, but nothing in the formula reads it.
+
+**Two ways it changes, with different consequences:**
+
+- **Correcting the figure** — `setSavingsAllocationAction`
+  (`'budget/set'`), used by onboarding's savings step and the sidebar
+  footer's pencil. A plain record edit: it sets `savingsAllocationCents`
+  and touches nothing else. Safe-to-Spend and Current Balance are
+  unaffected — you're just fixing the recorded number to match reality.
+- **Moving money into savings** — `addToSavingsAction`
+  (`'budget/add-to-savings'`), the sidebar footer's "+" button. A real
+  transfer: `src/main.js`'s `rootReducer` special-cases it to raise
+  `savingsAllocationCents` **and** debit `currentBalanceCents` by the
+  same amount, atomically — the fifth use of the documented cross-slice
+  balance exception (`docs/ARCHITECTURE.md` §7), alongside Expenses,
+  Income "mark received", Bills "mark paid", and Debt payments. So the
+  money leaves "safe to spend" exactly once, via the reduced balance.
+
+**History:** through the Goals-tab work and earlier, `savingsAllocationCents`
+*was* a flat, always-on subtraction (§2/§3d) — money the user had decided
+was never part of "safe to spend." The user changed this deliberately:
+the mental model is a separate savings account, not an earmarked slice of
+checking, so a $12,000 savings balance shouldn't drag a $1,000 checking
+balance to −$11,000. Savings goals (§3d) kept the old subtraction
+behaviour — the user chose to leave those protected.
+
+**Safety Buffer removed (user request, after Phase 9):** through Phase 9,
+`budget.safetyBufferCents` was a second flat, always-on subtraction of
+exactly this kind — a cushion the user never wanted counted as spendable,
+on top of Savings. It was removed at the user's explicit request:
+`setSafetyBufferAction`/`getSafetyBufferCents` and the `safetyBufferCents`
+term in this formula are gone (`src/modules/budget/`,
+`src/modules/safe-to-spend/calculation.js`), and `createEmptyState()`
+(`src/core/schema.js`) no longer includes the field for new installs.
 
 **Safety Buffer removed (user request, after Phase 9):** through Phase 9,
 `budget.safetyBufferCents` was a second flat, always-on subtraction of
@@ -309,22 +404,36 @@ non-zero `safetyBufferCents` keeps that value sitting inertly in their
 fields forward on every future save) — harmless, but worth knowing if
 ever inspecting real stored data going forward.
 
-## 10. What happens when the result is negative
+## 10. What happens when commitments exceed the balance
 
-A negative Safe-to-Spend is a **valid, meaningful result** — it means the
-user's currently-known commitments exceed what they currently have. The
-engine does not clamp it to zero; `safeToSpendCents` reports the true
-(possibly negative) number, and `isNegative: true` flags the case
-explicitly so the UI never has to re-derive it from a sign check.
+`safeToSpendCents` is **floored at 0** — `Math.max(0, netAfterCommittedCents)`.
+A negative "safe to spend" isn't a spendable amount, and showing one (e.g.
+`-$10,000.00` as the dashboard headline) read as broken rather than
+informative. This was changed at the user's explicit request ("set the
+floor to 0"); through the Goals-tab work and earlier it was *not* floored
+— the engine reported the true negative and `isNegative` meant
+`safeToSpendCents < 0`.
 
-Per this phase's explicit requirement: **the UI must never present a
-negative result as spendable money, and must never phrase it as a
-personal failing.** `getSafeToSpendMessage(result)`
-(`src/modules/safe-to-spend/wording.js`) returns ready-made, neutral copy
-for the negative case (stating the overage amount and framing it as "a
-sign to review what's committed," not a judgment) and for the exact-zero
-case (nothing is available, stated plainly). For an ordinary positive
-result it returns `null` — the number speaks for itself.
+Over-commitment is still fully surfaced, just not via a negative headline:
+
+- **`netAfterCommittedCents`** — the raw `currentBalance − totalCommitted`,
+  returned on the result *un*-floored (can be negative). This is where the
+  true position lives now.
+- **`isNegative`** — now means `netAfterCommittedCents < 0`, i.e. "the
+  result was floored / the user is over-committed." The UI keys its
+  attention styling (the `$0.00` shown in the warning colour, the
+  `--negative` progress track) off this, so no UI change was needed.
+- **`getSafeToSpendMessage(result)`** (`src/modules/safe-to-spend/wording.js`)
+  reads `netAfterCommittedCents` for the over-committed branch — neutral
+  copy stating the overage amount ("…add up to $X more than your current
+  balance… a sign to review what's committed," never a judgment). The
+  exact-zero branch (`safeToSpendCents === 0` with `netAfterCommittedCents
+  === 0`) states plainly that nothing is available. An ordinary positive
+  result returns `null` — the number speaks for itself.
+
+Per this phase's standing requirement: the UI must never present the
+result as spendable money when it isn't, and must never phrase it as a
+personal failing.
 
 ## 11. Payday awareness — days until payday and daily allowance
 
@@ -336,9 +445,8 @@ result it returns `null` — the number speaks for itself.
   `daysUntilPayday` is `null`. The `max(..., 1)` guards against dividing
   by zero on a same-day payday — that case is treated as "this amount
   needs to last through today," a one-day window, rather than being
-  undefined. The result can be negative (mirroring a negative
-  Safe-to-Spend) — the raw number is still returned; the UI decides how
-  to phrase a negative daily rate.
+  undefined. Since `safeToSpendCents` is floored at 0 (§10), this is
+  always `>= 0`.
 
 ## 11a. Upcoming income (display-only, Phase 4 addition)
 
@@ -353,14 +461,16 @@ alongside the subtracted figures, it must not visually imply it's part of
 the arithmetic (e.g. no `+` sign folded into a running total). It's `0`
 whenever there's no determinable horizon.
 
-## 11b. Total committed (display-only, added for a "committed vs. available"
+## 11b. Total committed (added for a "committed vs. available"
 progress visual)
 
-`totalCommittedCents` — the exact sum already computed in §2's formula
-(`plannedExpensesCents + savingsAllocationCents` — **bills are not part of
-this sum**, see §2), also returned on the result object. This is not a
-new calculation — it's the same intermediate value the engine already
-produces on its way to `safeToSpendCents`, just no longer kept private.
+`totalCommittedCents` — the exact sum computed in §2's formula
+(`upcomingBillsCents + plannedExpensesCents + goalsSavedCents` — **the
+flat Savings figure (§9) is the only money-ish term NOT in this**) —
+also returned on the result object, alongside `goalsSavedCents` itself.
+This is not a new calculation — it's the same intermediate value the
+engine already produces on its way to `safeToSpendCents`, just no longer
+kept private.
 Added so a UI can show "$X committed of $Y available" (e.g. a progress
 bar under the hero) without recomputing that sum itself in `src/ui/` —
 see CLAUDE.md's rule that money arithmetic belongs in this module, never
@@ -372,14 +482,57 @@ Per this phase's explicit requirement, product copy for this feature
 (centralized in `src/modules/safe-to-spend/wording.js`, not scattered
 across UI code) follows these rules:
 
-- Always **"Estimated safe to spend"**, never an unqualified "You can
-  spend $X" or "You can afford this" — it's a planning estimate derived
-  from what the user entered, not a live, verified bank balance.
+- The headline label is **"Safe to spend today"** (`SAFE_TO_SPEND_LABEL`),
+  reworded from the earlier **"Estimated safe to spend"** when the card
+  moved to a payday-based framing at the user's request. The
+  "planning estimate, not a verified bank figure" caveat did not go
+  away — it moved from the label into the subtext
+  (`getSafeToSpendSubtext` — "$X of your $Y balance has to last until
+  Mon 31 Aug", where `$Y` is the raw current balance, not the
+  savings/goals-reduced figure — the user asked specifically that the
+  balance named here isn't itself netted down) and the standing
+  disclaimer below. Never an unqualified "You can spend $X" / "You can
+  afford this".
 - A standing disclaimer (`PLANNING_DISCLAIMER`) states plainly that the
   app doesn't connect to or verify bank accounts — this is a planning
   tool over user-entered data, not a financial data aggregator.
+- The framing is "you have this total cushion, make it last until the
+  next paycheck" — **not** a per-day allowance. The number does not tick
+  down through the day. (`daysUntilPayday` / `dailyAllowanceCents` are
+  still computed and available for a future per-day view if ever wanted,
+  but the hero shows the total.)
 - The negative/zero-case message (§10) is neutral and non-judgmental —
-  it describes the situation, never the user.
+  it describes the situation, never the user. An ordinary **positive**
+  result gets **no explanatory paragraph at all** (`getSafeToSpendMessage`
+  returns `null`) — the number, the subtext line, and the "How is this
+  worked out?" breakdown carry the meaning. An earlier build had a
+  standing positive-case sentence (`SAFE_TO_SPEND_POSITIVE_DESCRIPTION`);
+  it was removed at the user's request.
+- The hero's **"How is this worked out?"** disclosure
+  (`src/ui/components/safe-to-spend-hero.js`, `renderBreakdown`) shows
+  the **exact** figures behind the headline and nothing else — a
+  plain-language intro sentence, then a fixed five-row flow to the total.
+  There is no second calculation: every number comes from
+  `getSafeToSpendBreakdown` (`src/modules/dashboard/index.js` —
+  `getSafeToSpend`'s result plus a `period` block), and by construction
+  the rows reconcile to `netAfterCommittedCents` (then floored →
+  `safeToSpendCents`, §10):
+
+  | row | value |
+  |---|---|
+  | **In checking** | `period.inCheckingCents` — `currentBalanceCents` with this month's logged movements added back (`+ spent + billsPaid − incomeReceived`), so the flow reconciles; anything with no dated log (a savings transfer, a manual balance edit) is absorbed here |
+  | **+ Arrived after that balance** | `period.arrivedAfterBalanceCents` — this month's `IncomeReceipt`s |
+  | **− Bills still to land** | `result.upcomingBillsCents` — active unpaid bills due before payday (§2/§7) |
+  | **− Paid and spent after that balance** | `period.paidAndSpentAfterBalanceCents` — this month's `Expense`s (debt-payment expenses included, once) + `BillPayment`s |
+  | **− Already set aside** | `period.setAsideCents` — `plannedExpensesCents + goalsSavedCents` (NOT bills — those are their own row) |
+  | **= Safe until payday** | `result.safeToSpendCents` |
+
+  Every row always renders, even at $0 (the mockup this matches shows
+  "+ $0.00" etc. explicitly). Over-committed: an **After everything** row
+  shows the true negative `netAfterCommittedCents`, then the total row
+  reads "Safe until payday (never below $0) $0.00". There is **no**
+  "shown for context" section (an earlier build had one; removed at the
+  user's request).
 - No medical/diagnostic language of any kind — unrelated to this feature,
   but restated here because it's a project-wide, non-negotiable rule
   (`docs/PRODUCT.md` §7, `CLAUDE.md`).
@@ -393,15 +546,17 @@ returns:
 {
   "currentBalanceCents": "number — echoes budget.currentBalanceCents",
   "upcomingIncomeCents": "number — display-only, see §11a; never part of the arithmetic",
-  "upcomingBillsCents": "number — display-only, see §2/§4/§6; never part of the arithmetic",
+  "upcomingBillsCents": "number — active unpaid bills due on/before the horizon; SUBTRACTED (see §2/§7)",
   "plannedExpensesCents": "number — sum of planned expenses counted, see §4/§8",
-  "savingsAllocationCents": "number — echoes budget.savingsAllocationCents",
-  "totalCommittedCents": "number — sum of the two subtracted figures above, see §11b",
-  "safeToSpendCents": "number — can be negative, see §10",
+  "savingsAllocationCents": "number — echoes budget.savingsAllocationCents; display-only, a separate-account figure, NOT part of the arithmetic (see §9)",
+  "goalsSavedCents": "number — sum of every Goal.savedCents, a committed term (see §3d)",
+  "totalCommittedCents": "number — sum of the subtracted figures (upcoming bills + planned expenses + goals; NOT the Savings figure), see §11b",
+  "netAfterCommittedCents": "number — currentBalance − totalCommitted, un-floored; can be negative, see §10",
+  "safeToSpendCents": "number — max(0, netAfterCommittedCents); floored at 0, never negative, see §10",
   "nextPaydayDate": "YYYY-MM-DD | null — the horizon, see §4/§5",
   "daysUntilPayday": "number | null — see §11",
-  "dailyAllowanceCents": "number | null — see §11, can be negative",
-  "isNegative": "boolean — safeToSpendCents < 0"
+  "dailyAllowanceCents": "number | null — see §11, always >= 0",
+  "isNegative": "boolean — netAfterCommittedCents < 0 (i.e. safeToSpendCents was floored)"
 }
 ```
 

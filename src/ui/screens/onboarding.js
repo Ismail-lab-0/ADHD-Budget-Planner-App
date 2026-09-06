@@ -4,18 +4,20 @@
 // still jumps straight to the dashboard from any step. No decisions are
 // asked here beyond what's genuinely useful for a fast start (name, for
 // the greeting; balance/savings; next payday incl. how often it repeats,
-// and any others; bills, any number of them) — everything else stays
-// reachable, not required, further down the dashboard (docs/PRODUCT.md
-// §3).
+// and any others; bills, any number of them; debts, any number of them) —
+// everything else stays reachable, not required, further down the
+// dashboard (docs/PRODUCT.md §3).
 
 import { el } from '../dom.js';
 import { amountField } from '../components/amount-field.js';
 import { renderBillForm } from '../components/bills-section.js';
+import { renderDebtForm } from '../components/debts-section.js';
 import { parseAmountToCents, parseBalanceToCents, formatCents } from '../../core/money.js';
 import { getLocalDateKey } from '../../core/date.js';
 import { setCurrentBalanceAction, setSavingsAllocationAction } from '../../modules/budget/index.js';
 import { createIncomeAction, getAllIncomes, INCOME_FREQUENCIES } from '../../modules/incomes/index.js';
 import { createBillAction, getAllBills } from '../../modules/bills/index.js';
+import { createDebtAction, getAllDebts } from '../../modules/debts/index.js';
 import { completeOnboardingAction, setDisplayNameAction } from '../../modules/settings/index.js';
 
 // Which step is showing — transient UI state, deliberately outside the
@@ -80,7 +82,7 @@ function renderBasicsStep({ dispatch, goNext }) {
   const form = el('form', { class: 'money-form' }, [
     balance,
     savings,
-    el('p', { class: 'field__hint' }, "Already have some saved? Enter it here — we'll count it as part of your total instead of subtracting it a second time from the balance above."),
+    el('p', { class: 'field__hint' }, "Current balance is what's in your checking account right now. Savings is what's already in a separate savings account — enter it for reference; it won't be subtracted from your safe-to-spend."),
     error,
     continueButton(),
   ]);
@@ -101,23 +103,15 @@ function renderBasicsStep({ dispatch, goNext }) {
     }
     error.textContent = '';
 
-    if (balanceCents != null && savingsCents != null) {
-      // Deliberately different from how Savings works everywhere else in
-      // the app (see CLAUDE.md "Current status"): here, the user is
-      // reporting their *current* real-world state — the balance they
-      // just typed already has this savings amount set aside, separately.
-      // Storing it as-is and then also subtracting it via
-      // `savingsAllocationCents` in the Safe-to-Spend formula
-      // (src/modules/safe-to-spend/calculation.js) would remove it
-      // twice. Adding it back into the stored balance cancels that out,
-      // so Safe-to-Spend nets back to exactly the figure the user
-      // reported, not that figure minus their own savings again.
-      dispatch(setCurrentBalanceAction(balanceCents + savingsCents));
-      dispatch(setSavingsAllocationAction(savingsCents));
-    } else {
-      if (balanceCents != null) dispatch(setCurrentBalanceAction(balanceCents));
-      if (savingsCents != null) dispatch(setSavingsAllocationAction(savingsCents));
-    }
+    // Each value is stored exactly as entered — Current Balance is the
+    // checking-account figure, Savings is a separate account balance
+    // tracked for reference. Neither touches the other: the Savings
+    // figure is display-only and does NOT reduce Safe-to-Spend
+    // (docs/SAFE-TO-SPEND.md §9) — only a later "Add to savings" transfer
+    // (which debits Current Balance) does. So entering $1,000 balance +
+    // $12,000 savings here leaves Safe-to-Spend at $1,000, not −$11,000.
+    if (balanceCents != null) dispatch(setCurrentBalanceAction(balanceCents));
+    if (savingsCents != null) dispatch(setSavingsAllocationAction(savingsCents));
 
     goNext();
   });
@@ -214,6 +208,31 @@ function renderBillsStep({ state, dispatch, now, goNext, requestRender }) {
   return onboardingCard('Upcoming bills', 'Add one, or a few — you can always add more later.', [list, form, continueBtn].filter(Boolean));
 }
 
+/** Debts you're paying down — reuses the real Debt form; add as many as you have, one at a time. Entirely optional. */
+function renderDebtsStep({ state, dispatch, now, goNext, requestRender }) {
+  const debts = getAllDebts(state);
+  const list = addedItemsList(debts.map((debt) => ({ title: debt.name, meta: `${formatCents(debt.currentBalanceCents)} owed · ${formatCents(debt.minimumPaymentCents)}/mo min` })));
+
+  const form = renderDebtForm({
+    onSubmit: (input) => {
+      dispatch(createDebtAction(input, { now }));
+      requestRender?.(); // stay on this step — refreshes the added-so-far list and resets the form for another entry
+    },
+  });
+
+  const continueBtn = el(
+    'button',
+    { type: 'button', class: debts.length > 0 ? 'btn btn--secondary btn--small' : 'link-button', onclick: goNext },
+    debts.length > 0 ? 'Continue' : "I don't have any debts to add right now"
+  );
+
+  return onboardingCard(
+    'Debts',
+    "Anything you're paying down — a credit card, a loan. Add the balance, the minimum payment, and which day of the month it's due. This is just for tracking; it doesn't change your Safe-to-Spend.",
+    [list, form, continueBtn].filter(Boolean)
+  );
+}
+
 /**
  * @param {object} options
  * @param {object} options.state
@@ -234,6 +253,7 @@ export function renderOnboarding({ state, dispatch, now = new Date(), requestRen
     () => renderBasicsStep({ dispatch, goNext }),
     () => renderPaydayStep({ state, dispatch, now, goNext, requestRender }),
     () => renderBillsStep({ state, dispatch, now, goNext, requestRender }),
+    () => renderDebtsStep({ state, dispatch, now, goNext, requestRender }),
   ];
 
   const onLastStep = currentStep >= steps.length;

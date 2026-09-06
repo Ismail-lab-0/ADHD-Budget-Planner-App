@@ -51,7 +51,7 @@ treat, or make any medical claim about ADHD or any other condition — see
 Opening the app should let the user quickly understand, in this order:
 
 1. How much money they currently have.
-2. What money is already committed (bills, planned expenses, savings).
+2. What money is already committed (planned expenses, savings goals).
 3. What's left after those commitments.
 4. How much they can safely spend right now.
 5. How long that money needs to last (until the next payday).
@@ -103,8 +103,13 @@ beyond what serves it.
    accounted for (not recurring, not yet spent).
 5. **Expense Tracking** — fast logging of money actually spent, so the
    running numbers stay current.
-6. **Savings** — money the user wants set aside and excluded from what's
-   "safe to spend."
+6. **Savings** — a separate savings-account balance the user tracks for
+   reference. It is **not** subtracted from Safe-to-Spend (it was never
+   part of the checking balance); entering or correcting it changes
+   nothing else. A dedicated "Add to savings" action logs a real transfer
+   — it moves money out of Current Balance (so Safe-to-Spend drops) and
+   raises the Savings figure. *(Savings Goals, §4 item 17, are the
+   opposite: their "already put away" amount IS subtracted.)*
 7. **Paydays** — when the user's next income is expected; drives "how long
    this needs to last."
 8. **Safe-to-Spend** *(primary)* — the single derived answer: current
@@ -115,12 +120,22 @@ beyond what serves it.
    number.
 10. **Budget Categories** — a light, optional tag on expenses/bills (not a
     full chart-of-accounts) — for context, not for building reports.
-11. **Simple Dashboard** — the one home screen: Safe-to-Spend front and
-    center, with just enough supporting context to trust the number (see
-    §5).
-12. **Onboarding** — a brief first-run flow that captures just enough
-    (starting balance, one income source, known bills) to make Safe-to-Spend
-    useful immediately.
+11. **Dashboard + dedicated views** — the Dashboard is the home screen:
+    Safe-to-Spend front and center, plus *summary* cards (Bills due,
+    Debts, Income, Categories, recent Expenses, Current Balance) each
+    with a "View all →" link. Full management of each feature lives on
+    its own dedicated view, reached from a persistent left sidebar
+    (Dashboard / Income / Expenses / Bills / Debts / Budget / Categories
+    / Settings — collapsible on desktop, a hamburger drawer on mobile).
+    Hash-based routing (`#expenses`, `#debts`, …); Back/Forward and
+    refresh work; there is **one shared store** behind every view, so a
+    change made on any view is reflected everywhere immediately. This
+    replaced an earlier single-scrolling-screen design, at the user's
+    explicit request — see `CLAUDE.md` "Current status".
+12. **Onboarding** — a brief, one-question-at-a-time first-run flow that
+    captures just enough (name for the greeting; starting balance +
+    savings; income sources; bills; debts — every step optional and
+    skippable) to make Safe-to-Spend useful immediately.
 13. **Data persistence** — `localStorage` only, same mechanism as today
     (see `docs/ARCHITECTURE.md`).
 14. **Import/Export** — the user's only durability guarantee, since there's
@@ -130,6 +145,35 @@ beyond what serves it.
 
 Items 13–15 are infrastructure, already established by the existing
 foundation (Phase 0/1) and largely reusable as-is — see §8.
+
+16. **Debt Tracking** *(added later, at the user's explicit request,
+    ahead of the roadmap's phase order — same as "Brain dump")* — a
+    simple, calm view of balances the user is paying down: name, amount
+    remaining vs. original, a progress bar and percentage paid off, and
+    an optional payoff estimate when an APR is given. A "Make payment"
+    action logs a real `Expense` (so the money hits Safe-to-Spend exactly
+    once, via §6's normal path — never the debt balance directly, see
+    `docs/SAFE-TO-SPEND.md` §3c) and a debt's minimum payment surfaces in
+    the same "Bills due soon" list as everything else. Explicitly **not**
+    a debt-management app: no avalanche/snowball/refinance/credit-score
+    tooling (that stays in §5). Tone is non-judgmental throughout —
+    "amount remaining", "making progress", "paid off 🎉", never "you owe"
+    or "debt problem".
+
+17. **Savings Goals** *(added later, at the user's explicit request,
+    ahead of the roadmap's phase order — same as Debt Tracking; replaced
+    the earlier "Budget" tab)* — named money targets the user is putting
+    money aside for over time (an emergency fund, a new laptop): a name,
+    the amount needed, the amount already put away, and a rough monthly
+    pace. Each goal is a card with a progress bar toward its target and an
+    optional "~$X/month · about N months to go" line. **A goal's
+    "already put away" amount reduces Safe-to-Spend** — protected,
+    committed money, the same treatment as the Savings figure (see
+    `docs/SAFE-TO-SPEND.md` §3d) — this is the one tracker that does, and
+    it was a deliberate decision (`AskUserQuestion`) to make it so rather
+    than keep it informational like Debts/Categories. This is a
+    *budgeting* concept — money set aside — and is **not** the
+    life-planning "goals module" §5 rules out.
 
 > **Safety Buffer was removed** (a later user decision, after this feature
 > list and phase order were originally written) — a flat, always-on
@@ -146,8 +190,11 @@ tool:
   completion as a standalone feature.
 - **Not a calendar app.** No time-anchored events unrelated to money.
 - **Not a routines/habit tool.** No checklist sequences, no streaks.
-- **Not general life planning.** No goals module, no weekly productivity
-  review.
+- **Not general life planning.** No life-goals module (aspirations,
+  habits, projects), no weekly productivity review. *(The Savings Goals
+  feature in §4 item 17 is a budgeting concept — money set aside toward a
+  target — not this. Named for what it is; unrelated to the retired
+  "ADHD Life Planner" goals.)*
 - **No task recommendation engine** ("what should I do next?" for
   non-financial tasks).
 - **No focus timer.**
@@ -171,22 +218,33 @@ without jeopardizing upcoming commitments).
 
 Illustrative shape (**not final** — see the note below):
 
-```
-Current balance:        $2,450
-Planned expenses:         -$300
-Savings:                  -$200
-─────────────────────────────────
-Safe to spend:           $1,950
+The hero's "How is this worked out?" panel lays it out as a flow (real
+numbers, from the app's data):
 
-Upcoming bills:          $1,200  (shown for awareness — doesn't
-                                  reduce Safe-to-Spend until paid)
+```
+In checking:                       $2,500    (balance before this month's
+                                              logged spending)
+Arrived after that balance:        + $0      (income received this month)
+Bills still to land:               − $29     (unpaid bills due before payday)
+Paid and spent after that balance: − $1,780  (expenses + bills paid this month)
+Already set aside:                 − $307    (planned expenses + savings goals)
+──────────────────────────────────────────
+Safe until payday:                 $384
 ```
 
-Bills only subtract once actually marked paid, at the user's explicit
-request — see `docs/SAFE-TO-SPEND.md` §2/§7 for the full reasoning and
-history (an earlier version of this illustration, and of the formula
-itself, subtracted an "Upcoming bills" line the same way Planned Expenses
-still does).
+Subtracted: **upcoming unpaid bills** (due on/before payday), **planned
+expenses**, and **savings-goal balances**. Marking a bill paid is net
+zero (its amount moves from "Bills still to land" into the balance debit
+under "Paid and spent"). **Not** subtracted: the separate Savings-account
+figure (§4 item 6 — only an "Add to savings" transfer moves it, by
+debiting Current Balance), and incoming income (only real, confirmed
+Current Balance counts). Full reasoning + the (five-times) flip-flop
+history of whether bills count: `docs/SAFE-TO-SPEND.md` §2/§7/§9.
+
+**Safe to spend never shows below $0.** If upcoming bills + planned
+expenses + money set aside exceed the current balance, the number floors
+at $0.00 and a neutral note explains by how much you're over-committed —
+it never displays a negative headline. See `docs/SAFE-TO-SPEND.md` §10.
 
 **This example is not the final formula.** Before any Safe-to-Spend code is
 written, the exact calculation must be formally defined — what "upcoming"

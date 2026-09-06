@@ -7,18 +7,17 @@
 // the `field: 'active'` toggle never touch the balance, same as before
 // this existed.
 //
-// Why this exists: originally added to fix a real reported bug, back when
-// `sumCommittedBills` (src/modules/safe-to-spend/calculation.js) excluded
-// paid bills from a subtracted `upcomingBillsCents` term — without this
-// effect, nothing ever actually left Current Balance when a bill was
-// marked paid, so Safe-to-Spend visibly went *up* by that amount, as if
-// the money had "come back." As of a later, explicit user request, bills
-// no longer subtract from Safe-to-Spend at all while unpaid (see
-// docs/SAFE-TO-SPEND.md §2/§7) — so this debit is no longer "canceling
-// out" an earlier subtraction, it's the *only* time a bill's amount ever
-// reduces Safe-to-Spend, the first and only time it counts. Un-marking a
-// bill as paid (toggling back to unpaid) symmetrically refunds it,
-// mirroring an Expense delete.
+// Why this exists: an unpaid bill due on/before the payday horizon IS
+// subtracted from Safe-to-Spend (`upcomingBillsCents` — docs/SAFE-TO-SPEND.md
+// §2/§7). "Mark paid" removes it from that committed subtraction; this
+// debit reduces the balance by the same amount at the same instant, so
+// the net effect on Safe-to-Spend is ZERO — the amount just moves from
+// "Bills still to land" to "already gone from the balance". Un-marking
+// reverses both, also net zero. Without this debit, "Mark paid" would
+// make Safe-to-Spend visibly go *up* (a real reported bug). (Whether
+// unpaid bills are a committed term has flip-flopped five times — see
+// docs/SAFE-TO-SPEND.md §2's history note; the current state is
+// "subtracted while unpaid".)
 //
 // Deliberately narrower than Expenses, same simplification already
 // documented for Income: editing a bill's amount or deleting it after

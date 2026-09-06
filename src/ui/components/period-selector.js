@@ -16,17 +16,19 @@ export const GLOBAL_PERIODS = ['week', 'month', 'lastMonth', 'all', 'custom'];
 const PERIOD_LABEL = { week: 'This week', month: 'This month', lastMonth: 'Last month', all: 'All time', custom: 'Custom range' };
 
 /**
- * The human label for a selected period value — the same text this
- * component already shows in its own toggle button/dropdown, exported so
- * other cards that read the header bar's global period filter (e.g. the
- * "Right now" card, src/ui/components/right-now-section.js) can title
- * themselves with it instead of a static label, without duplicating this
- * mapping.
- * @param {{period: string, from: string|null, to: string|null}} value
+ * The human label for a selected period — the same text this component
+ * already shows in its own toggle button/dropdown, exported so other
+ * cards that read the header bar's global period filter (e.g. the "Right
+ * now" card, src/ui/components/right-now-section.js, and the Expenses
+ * view's summary card) can title themselves with it instead of a static
+ * label, without duplicating this mapping. Accepts either the full
+ * `{period, from, to}` value object or a bare period string.
+ * @param {{period: string}|string} value
  * @returns {string}
  */
 export function getPeriodLabel(value) {
-  return PERIOD_LABEL[value?.period] ?? 'This month';
+  const key = typeof value === 'string' ? value : value?.period;
+  return PERIOD_LABEL[key] ?? 'This month';
 }
 
 // Whether the dropdown panel is open — transient UI state, deliberately
@@ -116,4 +118,24 @@ export function renderPeriodSelector({ value, onChange, requestRender }) {
 /** @returns {{period: string, from: string|null, to: string|null}} a sensible starting selection — "This month." */
 export function getDefaultPeriodValue() {
   return { period: 'month', from: null, to: null };
+}
+
+// The currently selected period — shared across every view that shows a
+// period-scoped figure (Dashboard's "This month" card, the Expenses view,
+// the Budget view). Ephemeral module state, deliberately outside the
+// store and not persisted (resets to "This month" on reload), same
+// convention as every other UI toggle in this app. It used to live in
+// src/ui/screens/dashboard.js back when the dashboard was the only
+// screen; it moved here when the app became multi-view so more than one
+// screen can read the same selection.
+let selectedPeriod = getDefaultPeriodValue();
+
+/** @returns {{period: string, from: string|null, to: string|null}} */
+export function getSelectedPeriod() {
+  return selectedPeriod;
+}
+
+/** @param {{period: string, from: string|null, to: string|null}} next */
+export function setSelectedPeriod(next) {
+  selectedPeriod = next;
 }

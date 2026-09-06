@@ -69,8 +69,10 @@ describe('logging an expense updates Current Balance and Safe-to-Spend together'
     const { store } = reload(createMockStorage());
     store.dispatch(setCurrentBalanceAction(1000));
     store.dispatch(createExpenseAction({ amountCents: 5000 }, { now: NOW }));
-    assert.equal(store.getState().budget.currentBalanceCents, -4000);
-    assert.equal(getSafeToSpend(store.getState(), { now: NOW }).safeToSpendCents, -4000);
+    assert.equal(store.getState().budget.currentBalanceCents, -4000); // the balance itself is not clamped
+    const sts = getSafeToSpend(store.getState(), { now: NOW });
+    assert.equal(sts.safeToSpendCents, 0); // safe-to-spend floors at 0 (docs/SAFE-TO-SPEND.md §10)
+    assert.equal(sts.netAfterCommittedCents, -4000); // the true negative position is still reported
   });
 });
 

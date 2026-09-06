@@ -81,6 +81,22 @@ export function formatFriendlyDate(date = new Date()) {
 }
 
 /**
+ * A short "Mon 31 Aug" — weekday + day + short month, day-before-month
+ * order. Used for the Safe-to-Spend hero's payday deadline. The locale is
+ * pinned to `en-GB` so the order/punctuation is deterministic and matches
+ * the intended format regardless of the browser's own locale (same
+ * reasoning as `formatCents` pinning `en-US`).
+ * @param {string|Date|null|undefined} dateOrKey a "YYYY-MM-DD" key or a Date
+ * @returns {string|null} null if the input isn't a resolvable date
+ */
+export function formatShortWeekdayDate(dateOrKey) {
+  if (dateOrKey == null) return null;
+  const date = typeof dateOrKey === 'string' ? parseLocalDate(dateOrKey) : dateOrKey;
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).format(date);
+}
+
+/**
  * A short, relative label for a recent timestamp — "just now", "2m ago",
  * "3h ago", "5d ago" — used by the Inbox section (src/ui/components/
  * inbox-section.js) for Brain Dump capture timestamps, which are always

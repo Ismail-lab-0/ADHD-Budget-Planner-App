@@ -29,6 +29,27 @@ Testing & Validation pass (not a numbered phase — no new functionality)
 ran after Phase 8 and before Phase 9 begins; see the section below and
 `docs/QA-REPORT.md`.
 
+> **Out-of-phase-order features shipped at the user's explicit request**
+> (each asked for directly and in detail, so the "don't start a module
+> ahead of its phase" rule above is satisfied): **"Brain dump"
+> quick-capture** (`schemaVersion` 8, `docs/DATA-MODEL.md`
+> "ExpenseDraft"), **Debt Tracking** (`schemaVersion` 9,
+> `docs/DATA-MODEL.md` "Debt"/"DebtPayment", `docs/PRODUCT.md` §4 item
+> 16), and **Savings Goals** — the Budget tab reworked into a Goals tab
+> (`schemaVersion` 10, `docs/DATA-MODEL.md` "Goal", `docs/PRODUCT.md` §4
+> item 17). Brain dump and Debt Tracking are additive and never touch the
+> Safe-to-Spend formula directly; Savings Goals *does* — a goal's
+> savedCents is a committed term, protected like Savings
+> (`docs/SAFE-TO-SPEND.md` §3d), a deliberate user decision. All three
+> left every prior phase intact. Phase 9 itself is still not started.
+>
+> The **UI shell** was also restructured at the user's explicit request
+> (not a numbered phase, no data/calculation change): a persistent left
+> **sidebar**, then a conversion from a single scrolling screen into a
+> real **multi-view app** with hash routing (`#dashboard`, `#expenses`,
+> …) — see `CLAUDE.md` "Current status". The store, schema, and every
+> `src/modules/**` calculation are untouched by it.
+
 ## Phase 0 — Foundation (scaffolding, no features) ✅ complete, reusable
 
 Goal: a minimal, boring, well-tested core that every future module builds

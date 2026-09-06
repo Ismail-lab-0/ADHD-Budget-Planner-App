@@ -7,6 +7,8 @@
   "scripts": {
     "test": "node --test tests/unit/*.test.js",
     "start": "node build/serve.js",
-    "build": "node build/build.js"
+    "build": "node build/build.js --demo && node build/build.js",
+    "build:demo": "node build/build.js --demo",
+    "build:full": "node build/build.js"
   }
 }

@@ -35,6 +35,10 @@ let editPopupOpenId = null;
  * @param {string} [options.errorText]
  * @param {string|null} [options.hint] shown under the field if given;
  *   omit (or pass `null`) for none.
+ * @param {string} [options.submitLabel] button text — defaults to "Save".
+ * @param {boolean} [options.startEmpty] when true the field starts blank
+ *   instead of prefilled with `valueCents` — for an "add this amount"
+ *   contribution rather than a "correct the total" edit.
  * @param {(cents: number) => void} options.onSave
  */
 export function renderEditTotalForm({
@@ -43,13 +47,15 @@ export function renderEditTotalForm({
   parse = parseAmountToCents,
   errorText = 'Enter an amount of 0 or more, like 150.00.',
   hint = 'This replaces the total directly — for fixing a mistake or reconciling against a real account, not a regular contribution.',
+  submitLabel = 'Save',
+  startEmpty = false,
   onSave,
 }) {
   const input = el('input', {
     type: 'text',
     inputmode: 'decimal',
     class: 'field__input',
-    value: centsToDollarString(valueCents),
+    value: startEmpty ? '' : centsToDollarString(valueCents),
     'aria-label': title,
   });
   const label = el('label', { class: 'field' }, [el('span', { class: 'field__label' }, title), input]);
@@ -59,7 +65,7 @@ export function renderEditTotalForm({
     label,
     error,
     hint ? el('p', { class: 'field__hint' }, hint) : null,
-    el('div', { class: 'money-form__buttons' }, [el('button', { type: 'submit', class: 'btn btn--primary btn--small' }, 'Save')]),
+    el('div', { class: 'money-form__buttons' }, [el('button', { type: 'submit', class: 'btn btn--primary btn--small' }, submitLabel)]),
   ].filter(Boolean));
 
   form.addEventListener('submit', (event) => {
@@ -125,7 +131,17 @@ export function renderEditTotalForm({
  *   `editOnly` takes precedence if it somehow happened).
  * @returns {HTMLElement}
  */
-export function renderSingleValueSection({ id, title, description, valueCents, onSave, allowNegative = false, icon = 'wallet', additive = false, onEditTotal, editOnly = false, requestRender }) {
+export function renderSingleValueSection({ id, title, description, valueCents, onSave, allowNegative = false, icon = 'wallet', additive = false, onEditTotal, editOnly = false, readOnly = false, requestRender }) {
+  // `readOnly` (Dashboard summary): the value with no way to change it
+  // here — editing lives on the Budget view. Short-circuits everything
+  // below.
+  if (readOnly) {
+    const head = [sectionHeading(icon, title, id)];
+    if (description) head.push(el('p', { class: 'section-description' }, description));
+    head.push(el('p', { class: 'single-value-form__current' }, `${additive ? 'Currently saved' : 'Currently'}: ${formatCents(valueCents)}`));
+    return el('section', { class: 'card card--quiet', 'aria-labelledby': id }, head);
+  }
+
   const parse = allowNegative ? parseBalanceToCents : parseAmountToCents;
   const errorText = allowNegative ? 'Enter a valid amount, like 150.00 or -40.00.' : 'Enter an amount of 0 or more, like 150.00.';
 

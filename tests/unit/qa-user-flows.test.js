@@ -53,16 +53,14 @@ describe('FLOW A: open app -> enter balance -> add payday -> add bills -> view S
     store.dispatch(createBillAction({ name: 'Rent', amountCents: 90000, dueDate: '2026-08-25' }, { now: NOW }));
     store.dispatch(createBillAction({ name: 'Phone', amountCents: 6000, dueDate: '2026-08-28' }, { now: NOW }));
 
-    // View Safe-to-Spend. Unpaid bills are display-only as of the "bills
-    // only reduce Safe-to-Spend once marked paid" change (docs/
-    // SAFE-TO-SPEND.md §2/§6) — they set upcomingBillsCents but don't
-    // touch the arithmetic.
+    // View Safe-to-Spend. Unpaid bills due before payday are subtracted
+    // ("Bills still to land", §2/§7).
     result = getSafeToSpend(store.getState(), { now: NOW });
     assert.equal(result.nextPaydayDate, '2026-09-01');
     assert.equal(result.daysUntilPayday, 11);
     assert.equal(result.upcomingBillsCents, 96000); // both bills fall before payday
-    assert.equal(result.safeToSpendCents, 150000);
-    assert.equal(result.dailyAllowanceCents, Math.round(150000 / 11));
+    assert.equal(result.safeToSpendCents, 54000); // 150000 − 96000
+    assert.equal(result.dailyAllowanceCents, Math.round(54000 / 11));
     assert.equal(result.isNegative, false);
   });
 });
@@ -89,7 +87,7 @@ describe('FLOW B: add expense -> save -> Safe-to-Spend updates', () => {
 });
 
 describe('FLOW C: add bill -> Safe-to-Spend updates', () => {
-  test('adding a bill does NOT reduce Safe-to-Spend — it only counts once marked paid (docs/SAFE-TO-SPEND.md §2/§6)', () => {
+  test('adding an unpaid bill due before payday reduces Safe-to-Spend by its amount (§2/§7)', () => {
     const backing = createMockStorage();
     const { store } = reload(backing, NOW);
     store.dispatch(setCurrentBalanceAction(100000));
@@ -99,26 +97,25 @@ describe('FLOW C: add bill -> Safe-to-Spend updates', () => {
     const after = getSafeToSpend(store.getState(), { now: NOW }).safeToSpendCents;
 
     assert.equal(before, 100000);
-    assert.equal(after, 100000);
+    assert.equal(after, 93000); // 100000 − 7000
   });
 });
 
 describe('FLOW D: edit bill -> Safe-to-Spend updates', () => {
-  test('editing an unpaid bill\'s amount has no effect on Safe-to-Spend either — it\'s still excluded until paid', () => {
+  test('editing an unpaid bill\'s amount changes Safe-to-Spend by the difference', () => {
     const backing = createMockStorage();
     const { store } = reload(backing, NOW);
     store.dispatch(setCurrentBalanceAction(100000));
     store.dispatch(createBillAction({ name: 'Internet', amountCents: 7000, dueDate: '2026-08-30' }, { now: NOW }));
 
     const afterCreate = getSafeToSpend(store.getState(), { now: NOW }).safeToSpendCents;
-    assert.equal(afterCreate, 100000);
+    assert.equal(afterCreate, 93000); // 100000 − 7000
 
     const id = store.getState().bills[0].id;
     store.dispatch(updateBillAction(id, { amountCents: 9000 }, { now: NOW }));
 
     const afterEdit = getSafeToSpend(store.getState(), { now: NOW }).safeToSpendCents;
-    assert.equal(afterEdit, 100000);
-    assert.equal(afterCreate, afterEdit); // unchanged — still an unpaid bill either way
+    assert.equal(afterEdit, 91000); // 100000 − 9000
   });
 
   test('editing a bill\'s due date past the payday horizon removes it from the result, without a stale double-count', () => {

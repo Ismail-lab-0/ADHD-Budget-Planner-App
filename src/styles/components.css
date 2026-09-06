@@ -20,6 +20,337 @@
   padding: var(--space-4) var(--app-edge-padding);
 }
 
+/* ---- Sidebar navigation (src/ui/components/sidebar.js) ----
+   In-page section navigation for the single dashboard screen (the app is
+   deliberately one scrolling page — see CLAUDE.md "Current status"). This
+   is the mobile-first baseline: an off-canvas drawer opened by the header
+   bar's hamburger. src/styles/responsive.css turns it into a fixed,
+   collapsible rail at >=1024px. Colours/tokens are all existing ones —
+   the active item reuses the accent-muted treatment already used by the
+   period selector's active option. */
+:root {
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 68px;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  width: min(var(--sidebar-width), 84vw);
+  padding: var(--space-4) var(--space-3);
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transform: translateX(-100%);
+  visibility: hidden;
+  /* Delay `visibility` so the drawer stays keyboard/AT-inert while
+     off-canvas, then reveals instantly when opening. */
+  transition: transform 0.2s ease, visibility 0s linear 0.2s;
+}
+
+body.sidebar-drawer-open .sidebar {
+  transform: translateX(0);
+  visibility: visible;
+  box-shadow: var(--shadow-md);
+  transition: transform 0.2s ease;
+}
+
+.sidebar__top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+}
+
+/* ---- Brand lockup (src/ui/components/brand.js) — used in the header bar
+   and the sidebar. An accent-filled rounded badge + a two-line wordmark
+   ("Budget" over "and Planner"), a deliberate logotype rather than an
+   accidental wrap. ---- */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.brand__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+.brand__name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.brand__name-primary {
+  font-weight: 700;
+  font-size: var(--font-size-lg);
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+}
+
+.brand__name-sub {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.sidebar__toggle {
+  display: none; /* a desktop-only affordance — shown at >=1024px */
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.sidebar__group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar__group-label {
+  margin: 0 0 var(--space-1);
+  padding: 0 var(--space-3);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+/* ---- Sidebar footer card (src/ui/components/sidebar.js) — Current
+   Balance + Savings, moved here from the former Budget tab. A tinted
+   panel (not the sidebar's own surface colour); each figure is a small
+   label with the amount below it and a compact edit pencil beside the
+   amount. Pushed to the bottom of the rail; hidden on the collapsed icon
+   rail (responsive.css). */
+.sidebar__stats {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
+  border-radius: var(--radius-md);
+  background: var(--color-accent-muted);
+  box-shadow: var(--shadow-md);
+}
+
+.sidebar__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar__stat-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.sidebar__stat-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.sidebar__stat-value {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar__stat-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.sidebar__stat-edit:hover {
+  color: var(--color-text);
+}
+
+.sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--tap-target-min);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar__link:hover {
+  background: var(--color-accent-muted);
+}
+
+.sidebar__link--active {
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.sidebar__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Dims the page behind the mobile drawer; a click anywhere on it closes
+   the drawer (src/ui/components/sidebar.js). Never shown on desktop. */
+.sidebar-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  padding: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+body:not(.sidebar-drawer-open) .sidebar-scrim {
+  display: none;
+}
+
+/* The centered-content wrapper every view's content sits in (the sidebar
+   + scrim are position:fixed siblings outside it — see
+   src/ui/components/app-frame.js). On mobile it just fills its parent; at
+   >=1024px it re-establishes the content measure inside the
+   sidebar-offset .app-main (responsive.css). */
+.app-view {
+  min-width: 0;
+}
+
+.header-bar__menu-btn {
+  flex-shrink: 0;
+}
+
+/* A dedicated view's page heading (src/ui/components/app-frame.js) — the
+   Dashboard reuses this for its greeting + date too. The Income/Expenses/
+   Bills/Debts views put a green "+ Add" button in the trailing slot. */
+.view-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+
+.view-header__main {
+  min-width: 0;
+}
+
+.view-header h1 {
+  margin-bottom: var(--space-1);
+}
+
+.view-header__subtitle {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+/* A simple vertical stack of cards, used by the non-Dashboard views that
+   don't need the two-column dashboard grid. */
+.view-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* The stack's own `gap` is the single spacing source — cancel the card's
+   default trailing margin so a summary card + list don't double up. */
+.view-stack > .card {
+  margin-bottom: 0;
+}
+
+/* A trailing-aligned row for a lone control above a list (e.g. the Debts
+   view's "Manage debts" link) — the views put their entries in bare
+   `.money-list--cards` / `.debt-list` cards with no wrapping card, so an
+   action like this has nowhere else to sit. */
+.view-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* A row of mutually-exclusive choice buttons (the Settings view's theme
+   picker). */
+.settings-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Settings controls sit on a full-width card, which on a wide desktop
+   left a lone <select>/<input> stretched across the whole page. Cap them
+   to a comfortable form width. */
+.settings-view .field__input,
+.settings-view .money-form {
+  max-width: 26rem;
+}
+
+/* In Settings, each card already has its own heading + a
+   `.section-description` comment, so the form's own top divider (which
+   separates a form from a modal header elsewhere) is a redundant line. */
+.settings-view .money-form {
+  padding-top: 0;
+  border-top: 0;
+}
+
 /* ---- Cards ---- */
 
 .card {
@@ -29,6 +360,9 @@
   padding: var(--space-5);
   margin-bottom: var(--space-5);
   box-shadow: var(--shadow-sm);
+  /* So a card the sidebar scrolls to (src/ui/components/sidebar.js) lands
+     with a little breathing room from the top, not flush against it. */
+  scroll-margin-top: var(--space-5);
 }
 
 .card:last-child {
@@ -175,6 +509,19 @@
   font-size: var(--font-size-base);
 }
 
+/* A <select> renders its text tight against the top/left without a
+   little padding (unlike a text input, which the min-height + baseline
+   centre). Give it real breathing room — a touch taller than a text
+   input, and more horizontal room so the value isn't against the border
+   or the native arrow. */
+select.field__input {
+  min-height: calc(var(--tap-target-min) + var(--space-2));
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
+  padding-left: var(--space-5);
+  padding-right: var(--space-5);
+}
+
 .field__hint {
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
@@ -240,6 +587,14 @@
   padding: var(--space-5);
 }
 
+/* A money form shown as a popup's whole body doesn't need its own
+   top separator line (that's for when it sits inline under a section
+   heading) — the modal header already provides the divider. */
+.modal__body > .money-form {
+  border-top: none;
+  padding-top: 0;
+}
+
 .modal__footer {
   display: flex;
   justify-content: flex-end;
@@ -293,73 +648,93 @@
 
 /* ---- Screens ---- */
 
-.today-header {
-  margin-bottom: var(--space-6);
-}
-
-.today-header__greeting {
-  margin-bottom: var(--space-1);
-}
-
-.today-header__date {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-  margin: 0;
-}
-
-/* ---- Dashboard grid ---- */
-
-/* Base (mobile-first) layout: a single column, every card an explicit
-   grid item with its own `order` so mobile can read in a different,
-   priority-driven sequence than desktop's two-column grouping — see
-   src/ui/screens/dashboard.js's comment. Desktop overrides
-   `grid-template-columns` and each item's `grid-column`/`order` in
-   src/styles/responsive.css; this base layer is what phones/tablets
-   actually use. Spacing between cards comes from `gap` here, not from
-   `.card`'s own `margin-bottom` (zeroed just below) — using the card's
-   own margin for this used to leave an inconsistent, sometimes-zero gap
-   depending on which card happened to land last inside a now-removed
-   wrapper div (reported directly by the user as "not enough space").
-   Directly after the hero: Current balance, then This period, then
-   everything else — the priority order the user asked for on a phone.
-
-   `.dashboard-grid__col` (the "main"/"side" wrapper each card slot sits
-   inside — see dashboard.js) is `display: contents` here: it removes
-   itself from layout so its children become direct flex items of
-   `.dashboard-grid` and follow the flat `order` values below. This is
-   what makes the mobile stacking order correct while still letting the
-   two columns stack independently at desktop (src/styles/responsive.css)
-   — see that file's comment for the CSS Grid bug this replaced (a shared
-   row-track height was stranding side-column cards under huge gaps,
-   reported directly by the user from a screenshot). */
-.dashboard-grid {
+/* ---- Dashboard ---- *
+   Reference-style stack of row grids:
+     .dashboard__top    — three even stat cards (Total Expenses / Total
+                          Savings / Total debt to pay)
+     .dashboard__mid    — Safe to Spend beside the Income-vs-Expenses
+                          chart, matched height (chart-driven)
+     .dashboard__bottom — Budget progress | Recent Expenses
+   Each collapses to fewer columns on tablet and one on mobile —
+   placement rules are in responsive.css. */
+.dashboard {
   display: flex;
   flex-direction: column;
+  gap: var(--space-6);
+}
+
+.dashboard .card {
+  margin-bottom: 0;
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+}
+
+.dashboard__top,
+.dashboard__mid,
+.dashboard__bottom {
+  display: grid;
   gap: var(--space-5);
 }
 
-.dashboard-grid__col {
-  display: contents;
+/* The stat row and the safe-to-spend / chart row stretch their cards to
+   equal height (the chart's natural height drives `.dashboard__mid`; the
+   hero fills the rest — see `.hero__disclaimer { margin-top: auto }`). */
+.dashboard__top,
+.dashboard__mid {
+  align-items: stretch;
 }
 
-.dashboard-grid__item {
-  min-width: 0; /* let cards shrink instead of overflowing their column */
+/* ---- Charts (src/ui/components/charts.js) ---- */
+
+.viz-card .section-description {
+  margin-top: calc(var(--space-1) * -1);
+  margin-bottom: var(--space-4);
 }
 
-.dashboard-grid .card {
-  margin-bottom: 0;
+.viz {
+  margin: 0;
 }
 
-.dashboard-grid__item--hero { order: 1; }
-.dashboard-grid__item--inbox { order: 2; }
-.dashboard-grid__item--right-now { order: 3; }
-.dashboard-grid__item--balance { order: 4; }
-.dashboard-grid__item--categories { order: 5; }
-.dashboard-grid__item--expenses { order: 6; }
-.dashboard-grid__item--income { order: 7; }
-.dashboard-grid__item--bills { order: 8; }
-.dashboard-grid__item--savings { order: 9; }
-.dashboard-grid__item--privacy { order: 10; }
+.viz__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 320px;
+  overflow: visible;
+}
+
+.viz-legend {
+  display: flex;
+  gap: var(--space-4);
+  margin: var(--space-3) 0 0;
+}
+
+.viz-legend--row {
+  flex-wrap: wrap;
+}
+
+.viz-legend__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  min-width: 0;
+}
+
+.viz-legend__swatch {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.viz-legend__label {
+  color: var(--color-text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* ---- Onboarding (Phase 7) ---- */
 
@@ -383,6 +758,14 @@
 .screen--onboarding > .card {
   width: 100%;
   max-width: 480px;
+}
+
+/* On the payday / bills steps, "Continue" is a bare button rendered as a
+   card sibling right after the add-form — without this it sits almost
+   flush against the form's own "Add another …" button. */
+.screen--onboarding > .card > .btn:last-child,
+.screen--onboarding > .card > .link-button:last-child {
+  margin-top: var(--space-4);
 }
 
 .onboarding-header {
@@ -453,6 +836,67 @@
   margin: 0 0 var(--space-3);
 }
 
+/* ---- Mini table (the Dashboard's read-only "Expenses" card) ---- */
+
+.mini-table__scroll {
+  overflow-x: auto; /* never overflow the card ugly on a phone */
+  margin: 0 calc(var(--space-2) * -1);
+}
+
+.mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.mini-table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+  padding: 0 var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.mini-table td {
+  padding: var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.mini-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.mini-table__activity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.mini-table__name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 22ch;
+}
+
+.mini-table__cat,
+.mini-table__date {
+  color: var(--color-text-secondary);
+}
+
+.mini-table__amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 /* ---- Money list / money items (Phase 2 — Income, Bills, Planned Expenses) ---- */
 
 .money-list {
@@ -473,11 +917,6 @@
 }
 
 .money-item:last-child {
-  border-bottom: none;
-}
-
-.money-item--editing {
-  display: block;
   border-bottom: none;
 }
 
@@ -512,6 +951,27 @@
   gap: var(--space-2);
 }
 
+/* ---- Card-per-entry lists ----
+   Income / expense / debt logs render each entry as its own subtly
+   raised card rather than a divider-separated row: a hairline border,
+   soft low-opacity shadow, rounded corners, and a small gap between
+   them. Container styling only — the row's content/layout is unchanged.
+   Applied via `.money-list--cards` (income-view.js, expenses-section.js,
+   debts-section.js's "All debts" popup) and mirrored on `.debt-row`
+   (the Debts view's own list, which uses its own markup). */
+.money-list--cards {
+  gap: var(--space-3);
+}
+
+.money-list--cards .money-item,
+.money-list--cards .money-item:last-child {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
 .completed-section {
   color: var(--color-text-secondary);
 }
@@ -525,23 +985,34 @@
 
 /* ---- Money forms (add/edit, Phase 2) ---- */
 
+/* One consistent vertical rhythm between every child of a money form —
+   bare inputs (e.g. a name field), `.field` wrappers, the "+ More
+   options" toggle, error/hint text, and the button row all get the same
+   gap. Previously only `.field` carried a `margin-bottom`, so a bare
+   input butted straight against the next field's label. */
 .money-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-border);
+}
+
+.money-form .field {
+  margin-bottom: 0;
 }
 
 .money-form__buttons {
   display: flex;
   gap: var(--space-2);
-  margin-top: var(--space-2);
+  margin-top: var(--space-1);
 }
 
 .money-form__toggle {
-  margin-top: var(--space-2);
+  align-self: flex-start;
 }
 
 .money-form__details {
-  margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-border);
 }
@@ -587,72 +1058,113 @@
   margin-bottom: var(--space-3);
 }
 
-/* ---- Summary strip (src/ui/components/summary-strip.js) — a compact,
-   scannable-in-2-seconds row of stat tiles above the hero. Deliberately
-   lighter than `.card`: no shadow, tighter padding, smaller value text
-   than even `.card--quiet` below — a glance strip, not another card
-   competing with the hero right underneath it. `auto-fit`/`minmax` wraps
-   to 2-across (then 1-across) on narrower viewports with no separate
-   breakpoint needed, the same responsive technique used nowhere else in
-   this codebase yet but appropriate here since these tiles have no
-   internal content that would break at a narrow width the way a form or
-   a list row could. ---- */
+/* ---- Dashboard headline stat cards (src/ui/components/stat-card.js) --
+   Total Expenses / Total Savings, in the top row beside Safe to Spend. ---- */
 
-.summary-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: var(--space-3);
-  margin-bottom: var(--space-5);
+.stat-card {
+  display: flex;
+  flex-direction: column;
 }
 
-.summary-tile {
+.stat-card__head {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
-.summary-tile__text {
-  display: flex;
-  flex-direction: column-reverse; /* value first in the DOM (see summary-strip.js) for a sensible reading order with CSS off; visually value-on-top either way */
-  gap: 2px;
-  min-width: 0;
-}
-
-.summary-tile__label {
-  font-size: var(--font-size-xs);
+.stat-card__label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
   color: var(--color-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.summary-tile__value {
-  font-size: var(--font-size-lg);
+.stat-card__value {
+  margin: 0;
+  font-size: var(--font-size-2xl);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
 
-/* ---- Safe-to-Spend hero (Phase 4 — the dashboard's primary element) ---- */
+.stat-card__delta-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+}
+
+.stat-card__delta {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.stat-card__delta--good {
+  background: var(--color-status-positive-bg);
+  color: var(--color-status-positive-text);
+}
+
+.stat-card__delta--bad {
+  background: var(--color-status-attention-bg);
+  color: var(--color-status-attention-text);
+}
+
+.stat-card__delta-note {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+/* A plain supporting line under the value (used instead of a delta row —
+   e.g. the Debts view's "Still owed" card). */
+.stat-card__note {
+  margin: var(--space-3) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+/* Tinted variants — the per-tab summary cards (Income / Expenses / Bills
+   / Debts views). Same background treatment as `.upcoming-income` /
+   `.bills-due-soon`: a soft `--color-status-*-bg` fill, no visible
+   border, and a deeper shadow than a plain card so the headline number
+   for each tab visibly lifts off the page. */
+.stat-card--positive,
+.stat-card--caution,
+.stat-card--attention {
+  border-color: transparent;
+  box-shadow: var(--shadow);
+}
+
+.stat-card--positive {
+  background: var(--color-status-positive-bg);
+}
+
+.stat-card--caution {
+  background: var(--color-status-caution-bg);
+}
+
+.stat-card--attention {
+  background: var(--color-status-attention-bg);
+}
+
+/* ---- Safe-to-Spend card — the dashboard's primary number ----
+   Prominence comes from a soft accent tint + the largest figure on the
+   page, not a loud gradient/shadow (docs/PRODUCT.md — calm, low
+   cognitive load). Left-aligned to sit in the top row's first cell. */
 
 .hero {
-  text-align: center;
-  background: linear-gradient(180deg, var(--color-accent-muted), var(--color-surface) 70%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--color-accent-muted);
   border-color: var(--color-accent-muted);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-md);
-  padding: var(--space-6) var(--space-5);
 }
 
 .hero__icon {
-  /* Centered via the inherited `text-align: center` on .hero — the chip is
-     inline-flex, so it participates in that centering like any inline
-     content. */
-  margin-bottom: var(--space-3);
+  margin: 0;
 }
 
 .hero__label {
@@ -660,19 +1172,17 @@
   font-weight: 600;
   color: var(--color-text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: var(--space-2);
+  letter-spacing: 0.05em;
+  margin: 0;
 }
 
 .hero__amount {
-  font-family: var(--font-serif);
-  font-size: var(--font-size-hero);
-  font-weight: 700;
+  font-size: var(--font-size-3xl);
+  font-weight: 800;
   line-height: 1;
   letter-spacing: -0.02em;
-  margin-bottom: var(--space-3);
-  /* Not-negative reads as calm/good — the same green used for income and
-     "on track" elsewhere, never a separate meaning (docs/PRODUCT.md §3). */
+  margin: 0;
+  font-variant-numeric: tabular-nums;
   color: var(--color-status-positive-text);
 }
 
@@ -681,14 +1191,13 @@
 }
 
 .hero__progress {
-  max-width: 320px;
-  margin: 0 auto var(--space-4);
+  margin: var(--space-1) 0 0;
 }
 
 .hero__progress-track {
   height: 8px;
   border-radius: var(--radius-full);
-  background: var(--progress-track);
+  background: var(--color-surface);
   overflow: hidden;
 }
 
@@ -712,65 +1221,77 @@
   color: var(--color-text-secondary);
 }
 
-.hero__cta {
-  margin-bottom: var(--space-2);
+/* The line directly under the amount: "$X of your $Y balance has to last
+   until Mon 31 Aug". */
+.hero__subtext {
+  margin: calc(var(--space-1) * -1) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .hero__description {
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
-  max-width: 32em;
-  margin-left: auto;
-  margin-right: auto;
-  margin-bottom: var(--space-5);
-}
-
-
-.hero__disclaimer {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
   margin: 0;
 }
 
-/* ---- "Right now" (src/ui/components/right-now-section.js) — a merged
-   snapshot card: Current balance, Money in, Money out, one row each.
-   Formerly two separate cards ("This Period" + "Current Balance", hence
-   the class names below carrying over unchanged from the old
-   "period-summary" naming this replaced — the row shape itself didn't
-   change, only which card it lives in and which figures fill it), merged
-   at the user's request to fix inconsistent card grouping in the right
-   column. `__text` takes the remaining row width (`flex: 1`) so an
-   optional trailing element (the Current Balance row's edit-pencil
-   icon-button) sits flush right instead of hugging the label/value. ---- */
-
-.right-now {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.right-now__row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.right-now__text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-}
-
-.right-now__label {
+/* "How is this worked out?" — a collapsed breakdown of the exact figures
+   getSafeToSpend returns (src/ui/components/safe-to-spend-hero.js). */
+.hero__breakdown {
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
 }
 
-.right-now__value {
-  font-weight: 600;
+.hero__breakdown-summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.hero__breakdown-summary:hover {
+  color: var(--color-text);
+}
+
+.hero__breakdown-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.hero__breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.hero__breakdown-amount {
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hero__breakdown-row--total {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* The plain-language sentence above the "How is this worked out?" rows. */
+.hero__breakdown-intro {
+  margin: var(--space-2) 0 var(--space-3);
+  line-height: 1.5;
+}
+
+/* `auto` pins the disclaimer to the bottom of the card when it's
+   stretched taller than its content — the `.dashboard__mid`
+   matched-height case. With no free space it collapses to 0 and the flex
+   `gap` still separates it. */
+.hero__disclaimer {
+  margin: auto 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
 }
 
 /* ---- Bills due soon ---- */
@@ -791,6 +1312,15 @@
   align-items: center;
   gap: var(--space-3);
   flex-wrap: wrap;
+}
+
+/* A hairline between rows so each bill / debt-payment reads as its own
+   item — the amber card background makes `--color-border` faint, so tint
+   the rule toward the card's own accent instead. */
+.bills-due-soon__row:not(:last-child) {
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  border-bottom-color: color-mix(in srgb, var(--color-status-caution-text) 30%, transparent);
 }
 
 .bills-due-soon__info {
@@ -879,11 +1409,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-}
-
-.header-bar__brand-name {
-  font-weight: 700;
-  font-size: var(--font-size-lg);
+  min-width: 0; /* let the name shrink/wrap instead of shoving the controls off-screen */
 }
 
 .header-bar__controls {
@@ -1139,6 +1665,7 @@
 
 .category-row__bar {
   height: 6px;
+  max-width: 54rem;
   border-radius: var(--radius-full);
   background: var(--progress-track);
   overflow: hidden;
@@ -1169,6 +1696,214 @@
   font-weight: 600;
 }
 
+/* Categories view — each category is its own card (same treatment as
+   `.debt-row` / `.goal-row`); the compact dashboard "Budget progress"
+   card keeps the plain `.category-list` inside its own card. */
+.category-list--cards {
+  gap: var(--space-3);
+}
+
+.category-list--cards .category-row {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+/* On the same line as the badge / name row (a third flex child of
+   `.category-row`), top-aligned — not stacked under the progress bar. */
+.category-row__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* ---- Debt overview card (src/ui/components/debts-section.js) ----
+   Reuses the Categories card's progress-bar primitives
+   (.category-row__bar / .category-row__bar-fill) — for a debt, a fuller
+   bar simply means "more paid off", so the default green fill reads
+   correctly with no status modifiers. Tone stays calm/non-judgmental
+   (docs/PRODUCT.md §10). */
+.debt-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Each debt is its own subtly raised card — matches the card-per-entry
+   treatment on income / expense logs (`.money-list--cards` above). Row
+   flex so edit/trash sit on the top line, right of the content (like
+   `.category-row` / `.goal-row`). */
+.debt-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.debt-row__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.debt-row__pay {
+  margin-top: var(--space-1);
+}
+
+/* A taller progress bar than the Categories mini-bar (6px) — a debt's
+   "how far along am I" is the whole point of the card. */
+.debt-row__bar {
+  height: 10.8px;
+  max-width: 54rem;
+  border-radius: var(--radius-full);
+  background: var(--progress-track);
+  overflow: hidden;
+}
+
+.debt-row__bar-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--color-status-positive-text);
+  transition: width 0.2s ease;
+}
+
+.debt-row__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.debt-row__name {
+  font-weight: 600;
+}
+
+.debt-row__percent {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.debt-row--paid .debt-row__percent {
+  color: var(--color-status-positive-text);
+  font-weight: 600;
+}
+
+.debt-row__balances {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.debt-row__payoff {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+/* On the top line, right of the debt content — not stacked at the bottom. */
+.debt-row__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* ---- Goals view (src/ui/screens/goals-view.js) ----
+   Each savings goal is its own card, same treatment as `.debt-row`. The
+   progress bar matches the Safe-to-Spend hero's (8px, pill, positive-tone
+   fill) on the Categories/Debt track token, since a goal card sits on a
+   plain surface rather than the hero's tint. */
+.goal-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.goal-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.goal-row__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.goal-row__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.goal-row__name {
+  font-weight: 600;
+}
+
+.goal-row__percent {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.goal-row--reached .goal-row__percent {
+  color: var(--color-status-positive-text);
+  font-weight: 600;
+}
+
+.goal-row__bar {
+  height: 10.8px;
+  max-width: 54rem;
+  border-radius: var(--radius-full);
+  background: var(--progress-track);
+  overflow: hidden;
+}
+
+.goal-row__bar-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--color-status-positive-text);
+  transition: width 0.2s ease;
+}
+
+.goal-row__amounts {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-row__pace {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+/* On the top line, right of the goal content — not stacked under the bar. */
+.goal-row__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
 /* ---- Privacy reassurance line ---- */
 
 .privacy-note {
@@ -1180,6 +1915,26 @@
   font-size: var(--font-size-xs);
   text-align: center;
   padding: var(--space-3) 0 0;
+}
+
+/* ---- Demo-build countdown line (src/ui/demo-gate.js) ----
+   Quiet secondary text under the dashboard once the demo expense count
+   nears the limit. No matching element is ever rendered in the full
+   build, so this rule is inert there. */
+
+.demo-countdown {
+  margin-top: var(--space-2);
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+/* The demo limit modal reuses the shared .modal / .modal__* classes
+   above; only the body copy needs its own spacing. */
+
+.demo-limit__message {
+  margin: 0;
+  line-height: 1.5;
 }
 
 /* ---- Fatal error fallback (see src/main.js) ---- */

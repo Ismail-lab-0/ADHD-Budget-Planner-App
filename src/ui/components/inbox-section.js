@@ -14,6 +14,7 @@ import { sectionHeading, iconChip, iconButton } from './icons.js';
 import { formatRelativeTime } from '../../core/date.js';
 import { getExpenseDraftsSortedByRecent, deleteExpenseDraftAction } from '../../modules/expense-drafts/index.js';
 import { createExpenseAction } from '../../modules/expenses/index.js';
+import { canAddExpense } from '../demo-gate.js';
 
 // Which draft (if any) is mid-conversion into a real Expense — transient
 // UI state, deliberately outside the store (see docs/ARCHITECTURE.md §4),
@@ -92,6 +93,10 @@ export function renderInboxSection({ state, dispatch, now = new Date(), requestR
           state,
           initialDescription: convertingDraft.text,
           onSubmit: (input) => {
+            // Demo build: if the limit is hit, show the limit modal and
+            // leave the note untouched in the Inbox — the Inbox can't be
+            // used to slip past the cap.
+            if (!canAddExpense(state)) { closeConvert(); return; }
             dispatch(createExpenseAction(input, { now: new Date() }));
             dispatch(deleteExpenseDraftAction(convertingDraft.id));
             closeConvert();

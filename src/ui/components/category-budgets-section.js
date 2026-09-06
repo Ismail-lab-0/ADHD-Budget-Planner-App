@@ -1,8 +1,16 @@
-// The Categories card — a restored, rebuilt UI for Phase 6/7's Category
-// Budgets module (src/modules/category-budgets/), which was never
-// deleted, only its dashboard section was, at the user's own earlier
-// request (see CLAUDE.md "Current status"). Deliberately has no effect on
-// Safe-to-Spend, same as before — see docs/SAFE-TO-SPEND.md §3b.
+// The Categories card — a UI for Phase 6/7's Category Budgets module
+// (src/modules/category-budgets/). Deliberately has no effect on
+// Safe-to-Spend — see docs/SAFE-TO-SPEND.md §3b.
+//
+// Two modes:
+//   - compact (Dashboard "Budget progress" card): the per-category
+//     progress list inside one card + a "View all categories →" link.
+//     Read-only.
+//   - full (the Categories view, src/ui/screens/categories-view.js): each
+//     category is its own card (`.category-list--cards`) with a pencil
+//     (inline edit) + trash — the same row shape as the Debts / Goals
+//     views. Adding is the view-header's "+ Add category" button
+//     (categories-view.js).
 
 import { el } from '../dom.js';
 import { emptyState } from './empty-state.js';
@@ -10,13 +18,11 @@ import { amountField } from './amount-field.js';
 import { renderPopup } from './popup.js';
 import { sectionHeading, iconButton, categoryEmojiBadge } from './icons.js';
 import { formatCents, parseAmountToCents } from '../../core/money.js';
-import { getAllCategoryBudgets, getCategoryBudgetProgress, createCategoryBudgetAction, updateCategoryBudgetAction, deleteCategoryBudgetAction } from '../../modules/category-budgets/index.js';
+import { getAllCategoryBudgets, getCategoryBudgetProgress, updateCategoryBudgetAction, deleteCategoryBudgetAction } from '../../modules/category-budgets/index.js';
 import { getKnownCategories } from '../../modules/expenses/index.js';
 
-// Transient UI state, deliberately outside the store (see
-// docs/ARCHITECTURE.md §4) — same convention as every other popup/inline-
-// edit toggle in this app.
-let manageOpen = false;
+// Which category's edit popup is open — transient UI state, deliberately
+// outside the store (see docs/ARCHITECTURE.md §4).
 let editingId = null;
 
 function miniProgressBar(spentCents, limitCents, status) {
@@ -25,21 +31,39 @@ function miniProgressBar(spentCents, limitCents, status) {
   return el('div', { class: 'category-row__bar' }, [el('div', { class: `category-row__bar-fill ${toneClass}`.trim(), style: `width: ${percent}%` })]);
 }
 
-function categoryRow(progress) {
+function categoryRow({ progress, dispatch, requestRender, compact }) {
   const remainingText = progress.remainingCents < 0 ? `${formatCents(Math.abs(progress.remainingCents))} over` : `${formatCents(progress.remainingCents)} left`;
   const remainingClass = progress.remainingCents < 0 ? 'category-row__remaining category-row__remaining--attention' : 'category-row__remaining';
 
-  return el('li', { class: 'category-row' }, [
-    categoryEmojiBadge(progress.category),
-    el('div', { class: 'category-row__body' }, [
-      el('div', { class: 'category-row__top' }, [
-        el('span', { class: 'category-row__name' }, progress.category),
-        el('span', { class: 'category-row__amounts' }, `${formatCents(progress.spentCents)} of ${formatCents(progress.limitCents)}`),
-      ]),
-      miniProgressBar(progress.spentCents, progress.limitCents, progress.status),
-      el('span', { class: remainingClass }, remainingText),
+  const body = [
+    el('div', { class: 'category-row__top' }, [
+      el('span', { class: 'category-row__name' }, progress.category),
+      el('span', { class: 'category-row__amounts' }, `${formatCents(progress.spentCents)} of ${formatCents(progress.limitCents)}`),
     ]),
-  ]);
+    miniProgressBar(progress.spentCents, progress.limitCents, progress.status),
+    el('span', { class: remainingClass }, remainingText),
+  ];
+
+  const actions = compact
+    ? null
+    : el('div', { class: 'category-row__actions' }, [
+        iconButton('edit', `Edit ${progress.category}`, () => {
+          editingId = progress.id;
+          requestRender?.();
+        }),
+        iconButton(
+          'trash',
+          `Delete ${progress.category}`,
+          () => {
+            if (window.confirm(`Delete the "${progress.category}" budget? This only removes the limit — nothing you've logged is affected.`)) {
+              dispatch(deleteCategoryBudgetAction(progress.id));
+            }
+          },
+          { tone: 'attention' }
+        ),
+      ]);
+
+  return el('li', { class: 'category-row' }, [categoryEmojiBadge(progress.category), el('div', { class: 'category-row__body' }, body), actions].filter(Boolean));
 }
 
 /**
@@ -64,14 +88,19 @@ function categoryNameField(value, knownCategories) {
 }
 
 /**
- * The add/edit form used inside the "Edit categories" popup.
+ * The add/edit form for a category budget. Exported so the Categories
+ * view (src/ui/screens/categories-view.js) can open it in an "+ Add
+ * category" popup; also used inline for per-card editing here.
  * @param {object} options
- * @param {object} options.state used only to build the category field's
- *   suggestions (getKnownCategories) — this form reads no other state.
+ * @param {object|null} [options.state] used to build the category field's
+ *   suggestions (getKnownCategories); pass an explicit `knownCategories`
+ *   array instead when `state` isn't available (the inline edit path).
+ * @param {string[]} [options.knownCategories]
  */
-function renderCategoryBudgetForm({ state, categoryBudget = null, onSubmit, onCancel }) {
+export function renderCategoryBudgetForm({ state, categoryBudget = null, knownCategories, onSubmit, onCancel }) {
   const isEdit = categoryBudget != null;
-  const category = categoryNameField(categoryBudget?.category, getKnownCategories(state));
+  const suggestions = knownCategories ?? getKnownCategories(state);
+  const category = categoryNameField(categoryBudget?.category, suggestions);
   const limit = amountField('Monthly limit', { name: 'limitCents', valueCents: categoryBudget?.limitCents ?? null });
   const error = el('p', { class: 'field__error', role: 'alert' });
 
@@ -81,7 +110,7 @@ function renderCategoryBudgetForm({ state, categoryBudget = null, onSubmit, onCa
     error,
     el('div', { class: 'money-form__buttons' }, [
       el('button', { type: 'submit', class: 'btn btn--primary btn--small' }, isEdit ? 'Save' : 'Add category'),
-      isEdit ? el('button', { type: 'button', class: 'btn btn--secondary btn--small', onclick: () => onCancel() }, 'Cancel') : null,
+      onCancel ? el('button', { type: 'button', class: 'btn btn--secondary btn--small', onclick: () => onCancel() }, 'Cancel') : null,
     ].filter(Boolean)),
   ]);
 
@@ -104,100 +133,60 @@ function renderCategoryBudgetForm({ state, categoryBudget = null, onSubmit, onCa
   return form;
 }
 
-function renderManagePopup({ state, dispatch, requestRender, now }) {
-  const close = () => {
-    manageOpen = false;
-    editingId = null;
-    requestRender?.();
-  };
-
-  const budgets = getAllCategoryBudgets(state);
-  const rows = budgets.map((budget) => {
-    if (budget.id === editingId) {
-      return el('li', { class: 'money-item money-item--editing' }, [
-        renderCategoryBudgetForm({
-          state,
-          categoryBudget: budget,
-          onSubmit: (changes) => {
-            dispatch(updateCategoryBudgetAction(budget.id, changes, { now }));
-            editingId = null;
-            requestRender?.();
-          },
-          onCancel: () => {
-            editingId = null;
-            requestRender?.();
-          },
-        }),
-      ]);
-    }
-    return el('li', { class: 'money-item' }, [
-      el('div', { class: 'money-item__body' }, [
-        el('span', { class: 'money-item__title' }, budget.category),
-        el('span', { class: 'money-item__meta-text' }, `${formatCents(budget.limitCents)} / month`),
-      ]),
-      el('div', { class: 'money-item__actions' }, [
-        iconButton('edit', `Edit ${budget.category}`, () => {
-          editingId = budget.id;
-          requestRender?.();
-        }),
-        iconButton(
-          'trash',
-          `Delete ${budget.category}`,
-          () => {
-            if (window.confirm(`Delete the "${budget.category}" budget? This only removes the limit — nothing you've logged is affected.`)) {
-              dispatch(deleteCategoryBudgetAction(budget.id));
-            }
-          },
-          { tone: 'attention' }
-        ),
-      ]),
-    ]);
-  });
-
-  const body = el('div', {}, [
-    renderCategoryBudgetForm({ state, onSubmit: (input) => dispatch(createCategoryBudgetAction(input, { now })) }),
-    budgets.length > 0
-      ? el('ul', { class: 'money-list', style: 'margin-top: var(--space-4)' }, rows)
-      : emptyState('No categories yet — add one above to start tracking a monthly limit.'),
-  ]);
-
-  return renderPopup({ titleId: 'edit-categories-heading', title: 'Edit categories', body, onClose: close });
-}
-
 /**
  * @param {object} options
  * @param {object} options.state
  * @param {Function} options.dispatch
  * @param {Date} [options.now]
  * @param {() => void} [options.requestRender]
+ * @param {boolean} [options.compact] Dashboard summary mode — progress
+ *   list inside one card + "View all categories →". Default false (the
+ *   Categories view: each category its own card + inline edit/delete).
+ * @param {() => void} [options.onViewAll] target of the "View all categories →" link (compact only).
  */
-export function renderCategoryBudgetsSection({ state, dispatch, now = new Date(), requestRender }) {
+export function renderCategoryBudgetsSection({ state, dispatch, now = new Date(), requestRender, compact = false, onViewAll }) {
   const progress = getCategoryBudgetProgress(state, { now });
 
-  const list = progress.length > 0 ? el('ul', { class: 'category-list' }, progress.map(categoryRow)) : emptyState('No budgeted categories yet — add one to see it here.');
-
-  const editLink = el(
-    'button',
-    {
-      type: 'button',
-      class: 'link-button',
-      onclick: () => {
-        manageOpen = true;
-        requestRender?.();
-      },
-    },
-    'Edit categories'
-  );
-
-  const popup = manageOpen ? renderManagePopup({ state, dispatch, requestRender, now }) : null;
-
-  return el(
-    'section',
-    { class: 'card', 'aria-labelledby': 'categories-heading' },
-    [
-      el('div', { class: 'card__header-row' }, [sectionHeading('pie-chart', 'Categories', 'categories-heading'), editLink]),
+  if (compact) {
+    const list =
+      progress.length > 0
+        ? el('ul', { class: 'category-list' }, progress.map((p) => categoryRow({ progress: p, dispatch, requestRender, compact: true })))
+        : emptyState('No budgeted categories yet — add one to see it here.');
+    const headerAction = onViewAll ? el('button', { type: 'button', class: 'link-button', onclick: onViewAll }, 'View all categories →') : null;
+    return el('section', { class: 'card', 'aria-labelledby': 'categories-heading' }, [
+      el('div', { class: 'card__header-row' }, [sectionHeading('pie-chart', 'Categories', 'categories-heading'), headerAction].filter(Boolean)),
       list,
-      popup,
-    ].filter(Boolean)
-  );
+    ].filter(Boolean));
+  }
+
+  // Full (Categories view): no outer container card — each category is
+  // its own card with a pencil (opens an edit popup) + trash.
+  const list =
+    progress.length > 0
+      ? el('ul', { class: 'category-list category-list--cards' }, progress.map((p) => categoryRow({ progress: p, dispatch, requestRender, compact: false })))
+      : emptyState('No categories yet — use "+ Add category" to set your first monthly limit.');
+
+  const editing = editingId ? progress.find((p) => p.id === editingId) : null;
+  const closeEdit = () => {
+    editingId = null;
+    requestRender?.();
+  };
+  const editPopup = editing
+    ? renderPopup({
+        titleId: 'edit-category-heading',
+        title: 'Edit category',
+        body: renderCategoryBudgetForm({
+          state,
+          categoryBudget: { id: editing.id, category: editing.category, limitCents: editing.limitCents },
+          onSubmit: (changes) => {
+            dispatch(updateCategoryBudgetAction(editing.id, changes, { now }));
+            closeEdit();
+          },
+          onCancel: closeEdit,
+        }),
+        onClose: closeEdit,
+      })
+    : null;
+
+  return el('div', { class: 'view-stack' }, [list, editPopup].filter(Boolean));
 }

@@ -7,6 +7,10 @@
 // docs/TEST-PLAN.md §2 ("application initialization", "state
 // initialization", "storage save/load", "state persistence after reload").
 
+// Imported first (its exports are used by the UI, not here) so the
+// DEMO_MODE build flag lands near the top of the built bundle — see
+// src/ui/demo-gate.js and build/build.js's --demo flag.
+import { DEMO_MODE } from './ui/demo-gate.js';
 import { createStore } from './core/store.js';
 import { createEventBus } from './core/events.js';
 import { createStorageAdapter } from './core/storage.js';
@@ -21,6 +25,8 @@ import { budgetReducer } from './modules/budget/index.js';
 import { expensesReducer, computeBalanceDelta } from './modules/expenses/index.js';
 import { categoryBudgetsReducer } from './modules/category-budgets/index.js';
 import { expenseDraftsReducer } from './modules/expense-drafts/index.js';
+import { debtsReducer, buildDebtPaymentExpense, buildDebtPaymentRecord } from './modules/debts/index.js';
+import { goalsReducer } from './modules/goals/index.js';
 import { settingsReducer, hasCompletedOnboarding, completeOnboardingAction } from './modules/settings/index.js';
 
 // Each entry delegates one state slice to its module's own reducer,
@@ -44,6 +50,20 @@ const SLICE_REDUCERS = [
   // nothing for these two slices to ever be transiently inconsistent
   // about the way currentBalanceCents would be.
   { key: 'expenseDrafts', prefix: 'expenseDrafts/', reducer: expenseDraftsReducer },
+  // Debt Tracking (docs/DATA-MODEL.md "Debt"). Ordinary create/update/
+  // delete/toggle route generically here; only `debts/record-payment` is
+  // a cross-slice special case (below), because a payment also logs an
+  // Expense and debits Current Balance.
+  { key: 'debts', prefix: 'debts/', reducer: debtsReducer },
+  // Savings goals (docs/DATA-MODEL.md "Goal"). Plain generic slice
+  // routing — no cross-slice effect: a goal's "already put away" amount
+  // reduces Safe-to-Spend by being read straight out of `state.goals` by
+  // the formula (docs/SAFE-TO-SPEND.md §3d), and creating one never
+  // debits Current Balance. (The flat Savings figure used to work the
+  // same way; it no longer subtracts from Safe-to-Spend — §9 — and
+  // `budget/add-to-savings` *does* now debit the balance, handled as a
+  // cross-slice special case in rootReducer below.)
+  { key: 'goals', prefix: 'goals/', reducer: goalsReducer },
   { key: 'settings', prefix: 'settings/', reducer: settingsReducer },
 ];
 
@@ -151,6 +171,54 @@ export function rootReducer(state, action) {
     };
   }
 
+  // Recording a Debt payment: same three-slice-plus-balance shape as the
+  // Income/Bill cases above. The debt's own `currentBalanceCents` drops
+  // (clamped at 0 — src/modules/debts/reducer.js); a real `Expense` is
+  // appended so the money shows in the expense history and reduces
+  // Current Balance -> Safe-to-Spend exactly once, through the ordinary
+  // Expense pathway (docs/DATA-MODEL.md §3a, SAFE-TO-SPEND.md §3c) — the
+  // debt balance itself is never read by the Safe-to-Spend calculation,
+  // so there's no double count; and a `DebtPayment` log record is added,
+  // the Debt-side counterpart to `BillPayment`. All atomic.
+  if (action.type === 'debts/record-payment') {
+    const prevDebts = state.debts ?? [];
+    const nextDebts = debtsReducer(prevDebts, action);
+    if (nextDebts === prevDebts) return state; // no-op: unknown debt, $0/invalid amount, or already at $0
+    const debt = prevDebts.find((d) => d.id === action.debtId);
+    const expense = buildDebtPaymentExpense(debt, action);
+    if (!expense) return { ...state, debts: nextDebts }; // debt balance changed but nothing valid to log — shouldn't happen, guard anyway
+    const record = buildDebtPaymentRecord(debt, action, expense.id);
+    const prevBalanceCents = state.budget?.currentBalanceCents ?? 0;
+    return {
+      ...state,
+      debts: nextDebts,
+      expenses: [...(state.expenses ?? []), expense],
+      debtPayments: record ? [...(state.debtPayments ?? []), record] : (state.debtPayments ?? []),
+      budget: { ...state.budget, currentBalanceCents: prevBalanceCents - expense.amountCents },
+    };
+  }
+
+  // Adding money to Savings is a real transfer out of Current Balance,
+  // not a bookkeeping label — same cross-slice shape as the cases above,
+  // touching two slices in one transition. `budgetReducer` raises
+  // `savingsAllocationCents`; here we also debit `currentBalanceCents` by
+  // the same amount, so the money reaches Safe-to-Spend exactly once (via
+  // the reduced balance — the Savings figure itself is display-only,
+  // docs/SAFE-TO-SPEND.md §9). `setSavingsAllocationAction`
+  // ('budget/set') — used by onboarding and the "correct the total"
+  // pencil — is a plain record edit with NO balance effect, and falls
+  // through to the generic routing below unchanged.
+  if (action.type === 'budget/add-to-savings') {
+    const prevBudget = state.budget ?? {};
+    const nextBudget = budgetReducer(prevBudget, action);
+    if (nextBudget === prevBudget) return state; // rejected: invalid / $0 / negative
+    const prevBalanceCents = prevBudget.currentBalanceCents ?? 0;
+    return {
+      ...state,
+      budget: { ...nextBudget, currentBalanceCents: prevBalanceCents - action.amountCents },
+    };
+  }
+
   for (const { key, prefix, reducer } of SLICE_REDUCERS) {
     if (action.type.startsWith(prefix)) {
       const nextSlice = reducer(state[key], action);
@@ -180,7 +248,8 @@ function hasExistingBudgetData(state) {
     (state.expenses?.length ?? 0) > 0 ||
     (state.categoryBudgets?.length ?? 0) > 0 ||
     (state.incomeReceipts?.length ?? 0) > 0 ||
-    (state.billPayments?.length ?? 0) > 0
+    (state.billPayments?.length ?? 0) > 0 ||
+    (state.debts?.length ?? 0) > 0
   );
 }
 

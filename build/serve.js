@@ -20,6 +20,10 @@ const CONTENT_TYPES = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  // So the paid build's PWA sidecars (dist/app-x7k2m9/) serve with the
+  // right MIME type when checked locally via `npm start`.
+  '.png': 'image/png',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
 };
 
 const server = createServer(async (req, res) => {

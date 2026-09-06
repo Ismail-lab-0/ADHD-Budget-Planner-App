@@ -310,6 +310,47 @@ Required coverage by the time each phase is "done" (see
     screens with edge-case data). A real-browser pass remains a §3 manual
     checklist item, unchanged.
 
+- **Debt Tracking (out of phase order, at the user's request — see
+  `docs/PRODUCT.md` §4 item 16):** ✅ implemented —
+  `tests/unit/debts.test.js` (the reducer + pure selectors) and
+  `tests/unit/debts-integration.test.js` (the `rootReducer` cross-slice
+  transition), plus a `v8 -> v9` block in `tests/unit/schema.test.js`.
+  - **Reducer:** required-field validation (name, the three amounts, the
+    1–31 due day); `interestRate` optional (`null` accepted, `0`
+    accepted as distinct, negative rejected); `paymentFrequency` defaults
+    to monthly and rejects unknowns; `recordDebtPaymentAction` reduces
+    `currentBalanceCents` and **clamps at 0** (over-payment can't go
+    negative); a $0/invalid payment or a payment against an already-$0
+    debt is a no-op (same array reference).
+  - **Selectors:** `getTotalDebtCents` (sum, corrupt-value-safe);
+    `getDebtProgress` (clamped 0–100%, no divide-by-zero on a $0
+    original, `isPaidOff` at `<= 0`); `getNextDebtDueDateKey` (rolls to
+    next month once the day passes, clamps a "31st" to a short month's
+    last day); `estimatePayoff` (`null` with no APR / no balance / no
+    payment, simple division at 0% APR, a real month count + date for a
+    normal APR, `coversInterest: false` when the payment can't cover one
+    month's interest); `getUpcomingDebtPayments` (one row per
+    balance-bearing debt, `alreadyPaidThisPeriod` true once a
+    same-month `DebtPayment` exists).
+  - **Cross-slice (`debts/record-payment` through `rootReducer`):** one
+    dispatch reduces the debt balance, appends a linked `Expense`
+    (category `"Debt Payment"`, `debtId` back-reference), debits Current
+    Balance by that expense amount, and appends a `DebtPayment` — all in
+    one transition. **Safe-to-Spend drops by exactly the payment amount,
+    not twice** (the key no-double-count property, `docs/SAFE-TO-SPEND.md`
+    §3c). Over-payment clamps the debt at $0 but still debits the full
+    amount actually paid. Deleting a debt leaves its past payment
+    `Expense`s in history (`docs/PRODUCT.md` §6). An unknown debt id is a
+    total no-op.
+  - **Migration:** `v8 -> v9` adds empty `debts` / `debtPayments`, purely
+    additive, no existing collection touched; a v1 blob migrates all the
+    way to v9 with both present and empty.
+  - **DOM/UI:** manual per §1 policy — smoke-tested this session via a
+    throwaway DOM-shim render (empty state, debt rows with progress +
+    payoff line, `Paid off 🎉` state, the conditional "Total debt"
+    summary tile, "Bills due soon" merging real bills with debt
+    minimum-payment rows, a paid debt leaving that list), then discarded.
+
 - **Phase 9 — Backup / Import / Export:**
   - Export-then-import round-trip produces equivalent state.
   - Import of a file with an older `schemaVersion` runs migrations
@@ -325,6 +366,26 @@ Required coverage by the time each phase is "done" (see
 Run before considering a phase's exit criteria met, and again before any
 Phase 10 release-polish pass. Each module gets a short checklist rather
 than a generic "click around" pass.
+
+### Navigation checklist (the multi-view sidebar — see `CLAUDE.md` "Current status")
+
+- [ ] Every sidebar item opens its own dedicated view; only one view is
+      visible at a time (not a scroll to a Dashboard section).
+- [ ] The active sidebar item is highlighted and matches the current
+      view / URL hash.
+- [ ] Adding/editing an expense, income, bill, or debt, or making a debt
+      payment, from its dedicated view is immediately reflected on the
+      Dashboard summary, Safe-to-Spend, and Current Balance — one shared
+      store, no per-view data.
+- [ ] URL hash updates per view (`#expenses`, `#debts`, …); browser
+      Back/Forward move between visited views; a refresh reopens the same
+      view; no application data is lost by any of this.
+- [ ] Desktop: the sidebar is a persistent rail and collapses/expands;
+      collapsed shows icons with tooltips and keeps the active highlight.
+- [ ] Mobile: the hamburger opens a drawer; selecting an item closes the
+      drawer and shows the new view from the top; no horizontal overflow.
+- [ ] `#index` or an unknown hash lands on the Dashboard rather than a
+      blank screen.
 
 ### Capture-friction checklist (expense entry, bill entry, and any future capture point)
 
@@ -381,6 +442,28 @@ than a generic "click around" pass.
       with network access disabled — the app fully works.
 - [ ] No requests appear in the browser's network panel during normal
       use.
+
+### PWA checklist (full/paid build only — `dist/app-x7k2m9/`)
+
+Serve the folder over `http://localhost` or HTTPS (a service worker won't
+register from `file://`) — e.g. `npm start` then open
+`/dist/app-x7k2m9/`.
+
+- [ ] iOS Safari → Share → Add to Home Screen shows the real green
+      checkbox icon (the `apple-touch-icon.png`), not a screenshot of the
+      page, and the name reads "Budget".
+- [ ] Launching that home-screen icon opens the app full-screen with no
+      Safari address bar / toolbar (`display: standalone` +
+      `apple-mobile-web-app-capable`).
+- [ ] After one online visit (so the service worker installs), enable
+      airplane mode and relaunch — the app loads from cache.
+- [ ] Chrome/Android → the install prompt appears; installed app matches
+      the manifest name/colours; DevTools → Application → Service Workers
+      shows `budget-planner-v1` active, and Cache Storage holds the shell.
+- [ ] The **demo** build (`dist/index.html`) has none of this — no
+      manifest link, no service worker, no `apple-mobile-web-app` meta,
+      and `dist/` has no `manifest.json` / `sw.js` / icon files.
+      (`tests/unit/build.test.js` asserts this automatically.)
 
 ### Accessibility checklist (rigorous pass in Phase 11, spot-checked
 earlier)

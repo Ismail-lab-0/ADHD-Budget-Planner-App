@@ -80,7 +80,7 @@ describe('the real v2 -> v3 migration (product pivot)', () => {
       routines: { templates: [], instances: [] },
       calendarEvents: [],
       money: { accounts: [], transactions: [], knownObligations: [] },
-      goals: [],
+      goals: [{ id: 'g_old', title: 'Learn guitar', targetDate: '2026-06-01' }],
       weeklyReviews: [],
     };
 
@@ -92,8 +92,11 @@ describe('the real v2 -> v3 migration (product pivot)', () => {
     assert.equal(migrated.routines, undefined);
     assert.equal(migrated.calendarEvents, undefined);
     assert.equal(migrated.money, undefined);
-    assert.equal(migrated.goals, undefined);
     assert.equal(migrated.weeklyReviews, undefined);
+    // The retired life-planning `goals` contents are discarded by v2->v3;
+    // v9->v10 then re-adds `goals` as a fresh, empty *savings* goals
+    // collection (a different concept — docs/DATA-MODEL.md "Goal").
+    assert.deepEqual(migrated.goals, []);
     // New budget collections are present and empty:
     assert.deepEqual(migrated.incomes, []);
     assert.deepEqual(migrated.bills, []);
@@ -232,5 +235,76 @@ describe('the real v7 -> v8 migration (ExpenseDrafts — Brain dump quick-captur
     assert.deepEqual(migrated.budget, v7State.budget);
     assert.deepEqual(migrated.bills, v7State.bills);
     assert.deepEqual(migrated.billPayments, v7State.billPayments);
+  });
+});
+
+describe('the real v8 -> v9 migration (Debt Tracking)', () => {
+  test('adds empty debts + debtPayments collections, purely additive, no existing data lost', () => {
+    const v8State = {
+      schemaVersion: 8,
+      meta: { createdAt: 'x', lastOpenedAt: 'x' },
+      settings: { onboardingCompletedAt: null, displayName: 'Alex', theme: 'system', reducedMotion: false, currency: 'USD' },
+      budget: { currentBalanceCents: 245000, savingsAllocationCents: 20000 },
+      incomes: [{ id: 'inc_1' }],
+      bills: [{ id: 'b_1' }],
+      plannedExpenses: [{ id: 'pe_1' }],
+      expenses: [{ id: 'e_1' }],
+      categoryBudgets: [{ id: 'cb_1' }],
+      incomeReceipts: [{ id: 'ir_1' }],
+      billPayments: [{ id: 'bp_1' }],
+      expenseDrafts: [{ id: 'ed_1' }],
+    };
+
+    const migrated = migrate(v8State);
+
+    assert.equal(migrated.schemaVersion, CURRENT_SCHEMA_VERSION);
+    assert.deepEqual(migrated.debts, []);
+    assert.deepEqual(migrated.debtPayments, []);
+    // Existing collections carry over untouched (docs/DATA-MODEL.md §11):
+    assert.deepEqual(migrated.budget, v8State.budget);
+    assert.deepEqual(migrated.expenses, v8State.expenses);
+    assert.deepEqual(migrated.expenseDrafts, v8State.expenseDrafts);
+  });
+
+  test('a v1 blob migrates all the way to v9 with debts present and empty', () => {
+    const migrated = migrate({ tasks: [] });
+    assert.equal(migrated.schemaVersion, CURRENT_SCHEMA_VERSION);
+    assert.deepEqual(migrated.debts, []);
+    assert.deepEqual(migrated.debtPayments, []);
+  });
+});
+
+describe('the real v9 -> v10 migration (Goals — Budget tab reworked into Goals)', () => {
+  test('adds an empty goals collection, purely additive, no existing data lost', () => {
+    const v9State = {
+      schemaVersion: 9,
+      meta: { createdAt: 'x', lastOpenedAt: 'x' },
+      settings: { onboardingCompletedAt: null, displayName: 'Alex', theme: 'system', reducedMotion: false, currency: 'USD' },
+      budget: { currentBalanceCents: 245000, savingsAllocationCents: 20000 },
+      incomes: [{ id: 'inc_1' }],
+      bills: [{ id: 'b_1' }],
+      plannedExpenses: [{ id: 'pe_1' }],
+      expenses: [{ id: 'e_1' }],
+      categoryBudgets: [{ id: 'cb_1' }],
+      incomeReceipts: [{ id: 'ir_1' }],
+      billPayments: [{ id: 'bp_1' }],
+      expenseDrafts: [{ id: 'ed_1' }],
+      debts: [{ id: 'd_1' }],
+      debtPayments: [{ id: 'dp_1' }],
+    };
+
+    const migrated = migrate(v9State);
+
+    assert.equal(migrated.schemaVersion, CURRENT_SCHEMA_VERSION);
+    assert.deepEqual(migrated.goals, []);
+    assert.deepEqual(migrated.budget, v9State.budget);
+    assert.deepEqual(migrated.debts, v9State.debts);
+    assert.deepEqual(migrated.expenses, v9State.expenses);
+  });
+
+  test('a v1 blob migrates all the way to v10 with goals present and empty', () => {
+    const migrated = migrate({ tasks: [] });
+    assert.equal(migrated.schemaVersion, CURRENT_SCHEMA_VERSION);
+    assert.deepEqual(migrated.goals, []);
   });
 });

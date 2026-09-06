@@ -4,7 +4,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { getUpcomingCommitments, getPeriodSummary, getUpcomingIncome, getUpcomingBillsTotalCents } from '../../src/modules/dashboard/index.js';
+import { getUpcomingCommitments, getPeriodSummary, getUpcomingIncome, getUpcomingBillsTotalCents, getSafeToSpendBreakdown } from '../../src/modules/dashboard/index.js';
 
 function bill(overrides = {}) {
   return { id: 'b1', name: 'Bill', amountCents: 1000, dueDate: '2026-08-25', active: true, paid: false, recurrence: 'one-time', ...overrides };
@@ -151,6 +151,68 @@ describe('getPeriodSummary (the header bar\'s global period selector)', () => {
     const { moneyOutCents, billsDueCount } = getPeriodSummary({}, { startDateKey: '2026-08-01', endDateKey: '2026-08-31', now: TODAY });
     assert.equal(moneyOutCents, 0);
     assert.equal(billsDueCount, 0);
+  });
+});
+
+describe('getSafeToSpendBreakdown (the hero "How is this worked out?" data)', () => {
+  // Rows: In checking (+arrived −billsStillToLand −paidAndSpent −setAside) = Safe until payday.
+  // Reconciles by construction to currentBalance − upcomingBills − plannedExpenses − goalsSaved.
+  const reconciles = (r) => {
+    const flow =
+      r.period.inCheckingCents +
+      r.period.arrivedAfterBalanceCents -
+      r.upcomingBillsCents -
+      r.period.paidAndSpentAfterBalanceCents -
+      r.period.setAsideCents;
+    return flow === r.netAfterCommittedCents;
+  };
+
+  test('with no logged activity this month, inCheckingCents === currentBalanceCents and the flow reconciles', () => {
+    const state = { budget: { currentBalanceCents: 100000 }, goals: [], plannedExpenses: [], bills: [] };
+    const r = getSafeToSpendBreakdown(state, { now: TODAY });
+    assert.equal(r.period.inCheckingCents, r.currentBalanceCents);
+    assert.equal(r.period.arrivedAfterBalanceCents, 0);
+    assert.equal(r.period.paidAndSpentAfterBalanceCents, 0);
+    assert.equal(r.period.setAsideCents, 0);
+    assert.equal(r.safeToSpendCents, 100000);
+    assert.ok(reconciles(r));
+  });
+
+  test('this-month Expenses + BillPayments group into paidAndSpent; IncomeReceipts into arrived; and the flow reconciles', () => {
+    const state = {
+      budget: { currentBalanceCents: 90000 },
+      goals: [{ id: 'g', savedCents: 10000 }],
+      plannedExpenses: [{ id: 'p', amountCents: 4000, plannedDate: '2026-08-30' }],
+      bills: [{ id: 'b', active: true, paid: false, amountCents: 3000, dueDate: '2026-08-25', recurrence: 'one-time' }],
+      expenses: [
+        { id: 'e1', amountCents: 12800, date: '2026-08-10', createdAt: 'a' },
+        { id: 'e2', amountCents: 5000, date: '2026-07-31', createdAt: 'b' }, // last month — excluded
+      ],
+      billPayments: [{ id: 'bp1', amountCents: 20000, date: '2026-08-05' }],
+      incomeReceipts: [{ id: 'ir1', amountCents: 200000, date: '2026-08-01' }],
+    };
+    const r = getSafeToSpendBreakdown(state, { now: TODAY });
+    assert.equal(r.period.paidAndSpentAfterBalanceCents, 12800 + 20000); // expenses this month + bill payments this month
+    assert.equal(r.period.arrivedAfterBalanceCents, 200000);
+    assert.equal(r.period.setAsideCents, 4000 + 10000); // planned expenses + goals (NOT the unpaid bill)
+    assert.equal(r.upcomingBillsCents, 3000); // its own "Bills still to land" row
+    assert.ok(reconciles(r));
+  });
+
+  test('a debt-payment Expense is counted once, inside paidAndSpentAfterBalanceCents (never a separate line)', () => {
+    const state = {
+      budget: { currentBalanceCents: 80000 },
+      goals: [],
+      plannedExpenses: [],
+      bills: [],
+      expenses: [
+        { id: 'e1', amountCents: 4000, date: '2026-08-12', category: 'Groceries', createdAt: 'a' },
+        { id: 'e2', amountCents: 15000, date: '2026-08-15', category: 'Debt Payment', debtId: 'd1', createdAt: 'b' },
+      ],
+      debtPayments: [{ id: 'dp1', debtId: 'd1', amountCents: 15000, date: '2026-08-15' }],
+    };
+    const r = getSafeToSpendBreakdown(state, { now: TODAY });
+    assert.equal(r.period.paidAndSpentAfterBalanceCents, 19000); // both expenses, debt payment included once
   });
 });
 

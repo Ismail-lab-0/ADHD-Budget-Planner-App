@@ -3,7 +3,9 @@
    >= 44px, text stays readable, cards stay uncramped.
 
    Breakpoints: mobile (default, up to 639px), tablet (640-1023px),
-   desktop (1024px+). */
+   desktop (1024px+, fixed sidebar rail), wide desktop (1280px+, the
+   dashboard's two-column grid — held back from 1024 so the fixed
+   sidebar doesn't cramp the two columns). */
 
 /* Tablet and up: content gets a comfortable centered measure instead of
    stretching edge to edge. */
@@ -15,82 +17,101 @@
   }
 }
 
-/* Desktop: a bit more breathing room, and enough width for the dashboard's
-   two-column arrangement below. */
+/* Desktop: a bit more breathing room. Onboarding (no sidebar) keeps the
+   centered 1040 measure; the dashboard offsets .app-main for the fixed
+   sidebar rail instead (below), re-centering its content in
+   .app-view. */
 @media (min-width: 1024px) {
   .app-main {
     max-width: 1040px;
     padding: var(--space-8) var(--app-edge-padding);
   }
 
-  /* Two columns: a wider, full-weight "main" column (Hero, Inbox,
-     Categories, Expenses) and a narrower, visually quieter "side" column
-     (the period card, Current balance, Bills due soon, Upcoming income,
-     Savings, the privacy note) — unchanged from before the mobile-ordering
-     fix below; only the mechanism changed (see dashboard.js's comment).
-
-     Found and fixed a real layout bug here, reported directly by the
-     user from a screenshot: the previous version made every card a
-     direct item of one CSS Grid, pinning only its *column* explicitly
-     and leaving its *row* to auto-placement — which packs items row by
-     row across BOTH columns, so a row's height is forced to fit
-     whichever column's card lands in it is tallest. Pairing the huge
-     Hero card into the same row as the much shorter "This period" card
-     left "This period" stranded with a large empty gap below it before
-     the next row (Current balance) could start, and the same thing
-     compounded down the rest of the side column. Fixed by giving each
-     column its own independent flex stack (`.dashboard-grid__col`,
-     wrapping the main/side card slots — see dashboard.js) instead of
-     relying on shared grid row-tracks; `.dashboard-grid` itself now only
-     arranges the two column wrappers side by side. */
-  .dashboard-grid {
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    align-items: start;
+  /* ---- Sidebar becomes a fixed rail (src/ui/components/sidebar.js) ---- */
+  .sidebar {
+    width: var(--sidebar-width);
+    transform: none;
+    visibility: visible;
+    box-shadow: none;
+    transition: width 0.15s ease;
   }
 
-  .dashboard-grid__col {
-    display: flex;
+  .sidebar__toggle { display: inline-flex; }
+  .sidebar__close { display: none; }
+  .header-bar__menu-btn { display: none; }
+  .sidebar-scrim { display: none !important; }
+
+  /* Collapsed: icons only. Labels/group headings hidden; the section name
+     stays reachable via each button's `title` (tooltip) and `aria-label`
+     (screen readers) — set in sidebar.js. Active state still shows. */
+  body.sidebar-collapsed .sidebar {
+    width: var(--sidebar-collapsed-width);
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+  }
+  body.sidebar-collapsed .sidebar__label,
+  body.sidebar-collapsed .sidebar__group-label,
+  body.sidebar-collapsed .brand__name,
+  body.sidebar-collapsed .sidebar__stats {
+    display: none;
+  }
+  body.sidebar-collapsed .sidebar__link {
+    justify-content: center;
+    gap: 0;
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+  }
+  body.sidebar-collapsed .sidebar__group {
+    align-items: center;
+  }
+  /* Brand icon above the expand toggle, both centred, when there's no
+     room for them side by side. */
+  body.sidebar-collapsed .sidebar__top {
     flex-direction: column;
-    gap: var(--space-5);
+    align-items: center;
+  }
+  body.sidebar-collapsed .sidebar__brand {
+    flex: 0;
   }
 
-  .dashboard-grid__col--main {
-    grid-column: 1;
+  /* Offset the page content so the fixed rail never overlaps it. The
+     content's own max-width/centering moves to .app-view. */
+  body.has-sidebar .app-main {
+    max-width: none;
+    margin: 0;
+    padding-left: calc(var(--sidebar-width) + var(--space-8));
+  }
+  body.has-sidebar.sidebar-collapsed .app-main {
+    padding-left: calc(var(--sidebar-collapsed-width) + var(--space-6));
   }
 
-  .dashboard-grid__col--side {
-    grid-column: 2;
+  .app-view {
+    max-width: 1040px;
+    margin: 0 auto;
   }
-
-  .dashboard-grid__item--hero { order: 1; }
-  .dashboard-grid__item--inbox { order: 2; }
-  .dashboard-grid__item--categories { order: 3; }
-  .dashboard-grid__item--expenses { order: 4; }
-
-  .dashboard-grid__item--right-now { order: 1; }
-  .dashboard-grid__item--balance { order: 2; }
-  .dashboard-grid__item--income { order: 3; }
-  .dashboard-grid__item--bills { order: 4; }
-  .dashboard-grid__item--savings { order: 5; }
-  .dashboard-grid__item--privacy { order: 6; }
 }
 
-/* A wide-desktop breakpoint used to live here: a `1fr 1fr` sub-grid on
-   `.dashboard-grid__col--side` so Bills Due Soon and Upcoming Income
-   (then a side-by-side pair) could flow 2-per-row, shrinking the side
-   column's total height to help balance it against the main column (see
-   CLAUDE.md "Current status" for that whole episode). Removed here, not
-   just left inert: the user later asked for
-   Bills Due Soon to move directly under Upcoming Income instead of
-   beside it, which means nothing in the side column pairs up anymore —
-   every card there is single-column/full-width now, same as the base
-   1024px breakpoint just above. A `1fr 1fr` grid with nothing left to
-   place two-per-row would have produced zero visual difference from a
-   plain stack while still carrying all that explanatory weight and
-   `app-main`'s extra width, so it was deleted rather than kept around as
-   dead, confusing complexity — the side column is simply the same
-   single-column flex stack at every desktop width now. */
+/* ---- Dashboard grid (src/ui/screens/dashboard.js) ----
+   Mobile (base): one column — every card stacks (stat cards, then Safe
+   to Spend, then the chart, then Budget | Recent Expenses).
+   Tablet (>= 600px): the three stat cards go 3-up in one even row; Safe
+   to Spend and the chart still stack full-width.
+   Desktop (>= 1024px): Safe to Spend sits beside the chart (matched
+   height, chart-driven); the bottom row goes 2-up. */
+@media (min-width: 600px) {
+  .dashboard__top {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .dashboard__mid {
+    grid-template-columns: 1fr 1.4fr; /* Safe to Spend | Income vs Expenses (wider) */
+  }
+  .dashboard__bottom {
+    grid-template-columns: 1.05fr 1.35fr; /* Budget progress | Recent Expenses (wider) */
+  }
+}
 
 /* Narrow phones: keep money-item actions from cramming onto the title's
    row (Phase 2 §12 — "cards do not become cramped"). */

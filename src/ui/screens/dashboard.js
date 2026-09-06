@@ -1,182 +1,170 @@
-// The Dashboard — the app's only screen. Every dollar figure that isn't
-// period-scoped still comes from `getSafeToSpend(state)`
-// (src/modules/safe-to-spend/) — this file never recomputes Safe-to-Spend
-// itself, only renders it. Period-scoped figures (This Period, Expenses)
-// come from `getPeriodSummary`/`getExpensesForPeriod` for whatever the
-// header bar's global period selector currently has selected — see
-// docs/ARCHITECTURE.md and CLAUDE.md "Current status" for the full
-// redesign rationale, including why Safe-to-Spend and Current Balance
-// deliberately never read the selected period.
+// The Dashboard — laid out after the reference the user shared:
+//   - `.dashboard__top`   — three equal headline stat cards (Total
+//     Expenses this month · Total Savings · Total debt to pay)
+//   - `.dashboard__mid`   — "Estimated safe to spend" beside the
+//     "Income vs Expenses" chart, matched heights (the chart's natural
+//     height drives the row; the hero fills it with its disclaimer
+//     pinned to the bottom, so there's no dead space under either)
+//   - `.dashboard__bottom` — a two-up row (Budget progress · Recent
+//     Expenses), then the Inbox and the privacy line
+// Each grid collapses to fewer columns on tablet and a single column on
+// mobile (breakpoints in responsive.css). Every number comes from the
+// existing selectors — no new metrics, no mock data.
+//
+// The "+ Add expense" action lives at the top of the page — the view
+// header's `titleAction` — not on the hero card.
+//
+// Everything else (full management of income / expenses / bills / debts /
+// categories / budget) lives on its own sidebar view.
 
 import { el } from '../dom.js';
 import { icon } from '../components/icons.js';
-import { renderHeaderBar } from '../components/header-bar.js';
-import { renderSummaryStrip } from '../components/summary-strip.js';
+import { renderAppFrame } from '../components/app-frame.js';
 import { renderSafeToSpendHero } from '../components/safe-to-spend-hero.js';
-import { renderSingleValueSection } from '../components/single-value-section.js';
-import { renderRightNowSection } from '../components/right-now-section.js';
-import { renderBillsDueSoon } from '../components/bills-due-soon.js';
-import { renderUpcomingIncome } from '../components/upcoming-income.js';
+import { renderStatCard } from '../components/stat-card.js';
+import { renderColumnChart } from '../components/charts.js';
+import { renderExpensesSection, renderExpenseForm } from '../components/expenses-section.js';
 import { renderCategoryBudgetsSection } from '../components/category-budgets-section.js';
-import { renderExpensesSection } from '../components/expenses-section.js';
 import { renderInboxSection } from '../components/inbox-section.js';
-import { getDefaultPeriodValue, getPeriodLabel } from '../components/period-selector.js';
+import { renderPopup } from '../components/popup.js';
+import { getSelectedPeriod, getPeriodLabel } from '../components/period-selector.js';
+import { navigateToView } from '../router.js';
 import { getGreetingPeriod, formatFriendlyDate } from '../../core/date.js';
-import { getSafeToSpend } from '../../modules/safe-to-spend/index.js';
-import { getPeriodSummary } from '../../modules/dashboard/index.js';
-import { resolvePeriodRange } from '../../modules/expenses/index.js';
-import { getCurrentBalanceCents, setCurrentBalanceAction, getSavingsAllocationCents, addToSavingsAction, setSavingsAllocationAction } from '../../modules/budget/index.js';
+import { formatCents } from '../../core/money.js';
+import { getMonthlyInVsOut, getExpensesMonthOverMonth, getSafeToSpendBreakdown } from '../../modules/dashboard/index.js';
+import { getSavingsAllocationCents } from '../../modules/budget/index.js';
+import { getTotalDebtCents } from '../../modules/debts/index.js';
+import { createExpenseAction, getExpensesForPeriod, getExpensesTotalCents } from '../../modules/expenses/index.js';
+import { canAddExpense, renderDemoNotice } from '../demo-gate.js';
 
 const GREETING_BY_PERIOD = { morning: 'Good morning', afternoon: 'Good afternoon', evening: 'Good evening' };
 
-// The header bar's global period selector — the single shared source of
-// truth for every period-scoped card on this page. Transient UI state,
-// deliberately outside the store (see docs/ARCHITECTURE.md §4) and not
-// persisted, same convention as every other UI toggle in this app; resets
-// to "This month" on reload.
-let selectedPeriod = getDefaultPeriodValue();
+// Whether the top-of-page "+ Add expense" popup is open — transient UI
+// state, deliberately outside the store (see docs/ARCHITECTURE.md §4).
+let dashboardAddExpenseOpen = false;
 
 function greetingText(state, now) {
-  const period = getGreetingPeriod(now);
-  const base = GREETING_BY_PERIOD[period];
+  const base = GREETING_BY_PERIOD[getGreetingPeriod(now)];
   const name = state?.settings?.displayName;
   return name ? `${base}, ${name}.` : `${base}.`;
 }
 
 /**
  * @param {object} options
- * @param {object} options.state current app state (read-only)
+ * @param {object} options.state
  * @param {Function} options.dispatch
  * @param {Date} [options.now]
  * @param {() => void} [options.requestRender]
  * @returns {HTMLElement}
  */
 export function renderDashboard({ state, dispatch, now = new Date(), requestRender }) {
-  const result = getSafeToSpend(state, { now });
+  // getSafeToSpendBreakdown = getSafeToSpend(state) + a `period` block so
+  // the hero's "How is this worked out?" panel can show this month's
+  // spending as visible deductions (it's a superset — every other
+  // consumer of `result` reads the same fields as before).
+  const result = getSafeToSpendBreakdown(state, { now });
+  const period = getSelectedPeriod();
 
-  const range = resolvePeriodRange(selectedPeriod.period, { now, from: selectedPeriod.from, to: selectedPeriod.to }) ?? { startDateKey: null, endDateKey: null };
-  const periodSummary = getPeriodSummary(state, { startDateKey: range.startDateKey, endDateKey: range.endDateKey, now });
-
-  const headerBar = renderHeaderBar({
-    state,
-    dispatch,
-    period: selectedPeriod,
-    onPeriodChange: (next) => {
-      selectedPeriod = next;
-      requestRender?.();
-    },
-    requestRender,
+  // ---- headline stat cards ----
+  // Total expenses follows the header bar's global period filter; the
+  // month-over-month delta chip only makes sense for "This month", so
+  // it's shown only then (`mom` compares this vs. last calendar month).
+  const mom = getExpensesMonthOverMonth(state, { now });
+  const periodExpensesCents = getExpensesTotalCents(
+    getExpensesForPeriod(state, { period: period.period, from: period.from, to: period.to, now })
+  );
+  const expensesCard = renderStatCard({
+    icon: 'receipt',
+    label: `Total expenses · ${getPeriodLabel(period)}`,
+    value: formatCents(periodExpensesCents),
+    delta: period.period === 'month' && mom.deltaPct != null ? { pct: mom.deltaPct, isGood: mom.deltaPct <= 0 } : null,
+  });
+  const savingsCard = renderStatCard({
+    icon: 'target',
+    label: 'Total savings',
+    value: formatCents(getSavingsAllocationCents(state)),
+  });
+  const debtCard = renderStatCard({
+    icon: 'credit-card',
+    label: 'Total debt to pay',
+    value: formatCents(getTotalDebtCents(state)),
   });
 
-  // Each card is tagged with its own `dashboard-grid__item--*` class so
-  // CSS can order it independently per breakpoint (src/styles/
-  // components.css / responsive.css). Cards are grouped into two
-  // `.dashboard-grid__col` wrapper divs — "main" (hero, inbox, categories,
-  // expenses) and "side" (the period card, Current balance, Upcoming
-  // Income, Bills Due Soon, Savings, the privacy note) — but that
-  // grouping only matters at desktop width. On mobile,
-  // `.dashboard-grid__col` is `display: contents` (removes its own box,
-  // promoting its children to direct flex items of `.dashboard-grid`),
-  // so every card still follows one flat `order` sequence there: hero ->
-  // inbox -> right-now -> balance -> categories -> expenses -> income ->
-  // bills -> savings -> privacy. Inbox sits right after the hero (moved
-  // from last in the main column) at the user's explicit request —
-  // quick-capture is a frequently-used feature and previously required
-  // scrolling past Categories/Expenses to reach.
-  //
-  // The period card and Current Balance briefly lived merged into one
-  // "Right now" card (Current balance + Money in + Money out), then the
-  // user asked to split Current Balance back out into its own card,
-  // directly below the period card — see right-now-section.js's own
-  // header comment for that whole lineage.
-  //
-  // The two-wrapper-div split was tried once before and reverted in
-  // favor of one flat grid, because that version hard-coded DOM order as
-  // layout order (see the now-superseded comment this replaced) — no
-  // `order` property was involved, so mobile had no way to reorder
-  // Current Balance/This Period ahead of Categories/Expenses without
-  // literally moving them in the DOM. This version keeps the flat
-  // `order`-driven approach for mobile but fixes a real desktop bug that
-  // approach introduced: making every card a *direct* grid item left
-  // rows auto-placed and shared across both columns, so a row's height
-  // was forced to fit whichever column's card in that row was tallest —
-  // pairing the tall Hero with the much shorter "This period" card left
-  // "This period" stranded with a large empty gap below it before the
-  // next row could start, and it compounded down the whole side column
-  // (reported directly by the user from a screenshot). Wrapping each
-  // column in its own flex container at desktop (`.dashboard-grid__col`,
-  // responsive.css) gives each column independent stacking, immune to
-  // the other column's card heights, while `display: contents` keeps the
-  // exact same DOM available for mobile's flat `order` sequence.
-  function gridItem(slot, node) {
-    return el('div', { class: `dashboard-grid__item dashboard-grid__item--${slot}` }, node);
-  }
+  // ---- Overview: income vs expenses per month ----
+  const monthly = getMonthlyInVsOut(state, { now });
+  const overviewCard = renderColumnChart({
+    title: 'Income vs Expenses',
+    subtitle: `Each month · ${now.getFullYear()}`,
+    bars: monthly.map((m) => ({ label: m.label, values: [m.inCents, m.outCents] })),
+    series: [
+      { label: 'Income', color: 'var(--color-chart-income)' },
+      { label: 'Expenses', color: 'var(--color-chart-expense)' },
+    ],
+    emptyMessage: 'No income or expenses logged this year yet.',
+  });
 
-  const mainColumn = el('div', { class: 'dashboard-grid__col dashboard-grid__col--main' }, [
-    gridItem('hero', renderSafeToSpendHero(result, { state, dispatch, requestRender })),
-    // Directly below the hero — Brain Dump quick-capture's Inbox
-    // (src/ui/components/inbox-section.js) — moved up from below Expenses
-    // so it no longer requires scrolling past Categories/Expenses to reach.
-    gridItem('inbox', renderInboxSection({ state, dispatch, now, requestRender })),
-    gridItem('categories', renderCategoryBudgetsSection({ state, dispatch, now, requestRender })),
-    gridItem('expenses', renderExpensesSection({ state, dispatch, requestRender, period: selectedPeriod })),
-  ]);
+  // ---- Recent Expenses (period-scoped, read-only) ----
+  const recentCard = renderExpensesSection({
+    state,
+    dispatch,
+    now,
+    requestRender,
+    period,
+    compact: true,
+    onViewAll: () => navigateToView('expenses'),
+  });
 
-  // Period card (Money in/out, titled with the selected period — see
-  // right-now-section.js) -> Current balance (its own card again, right
-  // below the period card, at the user's explicit request to split it
-  // back out of that card) -> Upcoming Income -> Bills Due Soon ->
-  // Savings -> privacy, each full width and stacked.
-  const sideColumn = el('div', { class: 'dashboard-grid__col dashboard-grid__col--side' }, [
-    gridItem('right-now', renderRightNowSection({ periodSummary, periodLabel: getPeriodLabel(selectedPeriod) })),
-    gridItem(
-      'balance',
-      renderSingleValueSection({
-        id: 'current-balance-heading',
-        title: 'Current balance',
-        description: 'What you actually have right now.',
-        valueCents: getCurrentBalanceCents(state),
-        onSave: (cents) => dispatch(setCurrentBalanceAction(cents)),
-        allowNegative: true,
-        icon: 'wallet',
-        // No inline field/Save button — just "Currently: $X" and a pencil
-        // that opens a small popup to change it, at the user's request.
-        editOnly: true,
-        requestRender,
+  // ---- Budget progress ----
+  const budgetCard = renderCategoryBudgetsSection({
+    state,
+    dispatch,
+    now,
+    requestRender,
+    compact: true,
+    onViewAll: () => navigateToView('categories'),
+  });
+
+  // ---- "+ Add expense", top of the page (view-header action) ----
+  const closeAddExpense = () => {
+    dashboardAddExpenseOpen = false;
+    requestRender?.();
+  };
+  const addExpenseButton = el(
+    'button',
+    { type: 'button', class: 'btn btn--primary btn--small', onclick: () => { dashboardAddExpenseOpen = true; requestRender?.(); } },
+    '+ Add expense'
+  );
+  const addExpensePopup = dashboardAddExpenseOpen
+    ? renderPopup({
+        titleId: 'dashboard-add-expense-heading',
+        title: 'Add expense',
+        body: renderExpenseForm({ state, onSubmit: (input) => {
+          if (!canAddExpense(state)) { closeAddExpense(); return; }
+          dispatch(createExpenseAction(input, { now }));
+          closeAddExpense();
+        } }),
+        onClose: closeAddExpense,
       })
-    ),
-    gridItem('income', renderUpcomingIncome({ state, dispatch, now, requestRender })),
-    gridItem('bills', renderBillsDueSoon({ state, dispatch, now, requestRender })),
-    gridItem(
-      'savings',
-      renderSingleValueSection({
-        id: 'savings-heading',
-        title: 'Savings',
-        description: 'Money set aside and protected from discretionary spending.',
-        valueCents: getSavingsAllocationCents(state),
-        onSave: (cents) => dispatch(addToSavingsAction(cents)),
-        onEditTotal: (cents) => dispatch(setSavingsAllocationAction(cents)),
-        icon: 'target',
-        additive: true,
-        requestRender,
-      })
-    ),
-    gridItem('privacy', el('p', { class: 'privacy-note' }, [icon('shield'), 'Your data stays on this device — private, no accounts.'])),
-  ]);
+    : null;
 
-  return el('div', { class: 'screen screen--dashboard' }, [
-    headerBar,
-    el('header', { class: 'today-header' }, [
-      el('h1', { class: 'today-header__greeting' }, greetingText(state, now)),
-      el('p', { class: 'today-header__date' }, formatFriendlyDate(now)),
-    ]),
-    // Above the hero — a compact, scannable-in-2-seconds strip of stat
-    // tiles (src/ui/components/summary-strip.js): Total expenses, Total
-    // bills, Bills due, Inbox items. No longer reads `result`
-    // (getSafeToSpend's output) at all — Safe to Spend and Days left,
-    // the two tiles that used it, were both replaced at the user's
-    // request; see summary-strip.js's own header comment.
-    renderSummaryStrip({ state }),
-    el('div', { class: 'dashboard-grid' }, [mainColumn, sideColumn]),
-  ]);
+  const body = el('div', { class: 'dashboard' }, [
+    el('div', { class: 'dashboard__top' }, [expensesCard, savingsCard, debtCard]),
+    el('div', { class: 'dashboard__mid' }, [renderSafeToSpendHero(result), overviewCard]),
+    el('div', { class: 'dashboard__bottom' }, [budgetCard, recentCard]),
+    renderInboxSection({ state, dispatch, now, requestRender }),
+    el('p', { class: 'privacy-note' }, [icon('shield'), 'Your data stays on this device — private, no accounts.']),
+    renderDemoNotice(state),
+    addExpensePopup,
+  ].filter(Boolean));
+
+  return renderAppFrame({
+    state,
+    dispatch,
+    requestRender,
+    activeView: 'dashboard',
+    title: greetingText(state, now),
+    subtitle: formatFriendlyDate(now),
+    titleAction: addExpenseButton,
+    body,
+  });
 }

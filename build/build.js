@@ -1,7 +1,20 @@
 #!/usr/bin/env node
-// Inlines /src (JS + CSS) into a single self-contained dist/index.html. See
+// Inlines /src (JS + CSS) into a single self-contained HTML file:
+// `--demo` -> dist/index.html (gated public demo), no flag ->
+// dist/app-x7k2m9/index.html (full paid build). The paid build sits at
+// an unguessable path — not a guessable filename — so it isn't trivially
+// discoverable from the public demo's origin; buyers still get a real
+// index.html (Add to Home Screen / offline install need that name). The
+// two builds differ only by the DEMO_MODE flag rewrite below; see
+// src/ui/demo-gate.js. See
 // docs/ARCHITECTURE.md §2/§6 ("must eventually be distributable as one
 // self-contained HTML file ... a small, dependency-free Node script").
+//
+// The demo IS that one self-contained file. The paid build is the same
+// self-contained index.html plus PWA sidecars (manifest.json, sw.js, and
+// three icon PNGs rasterised at build time — see build/pwa.js) so it can
+// be installed to a home screen and opened offline; nothing PWA-related
+// is emitted for the demo.
 //
 // This is a purpose-built bundler for this project's specific, small ES
 // module graph — not a general one. It only understands the subset of
@@ -14,13 +27,46 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writePwaAssets, pwaHeadTags, pwaRegisterScript } from './pwa.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const SRC = join(ROOT, 'src');
 const ENTRY = join(SRC, 'main.js');
 const OUT_DIR = join(ROOT, 'dist');
-const OUT_FILE = join(OUT_DIR, 'index.html');
+
+// The ONLY thing that differs between the two shipping builds. With
+// `--demo`, the bundled `const DEMO_MODE = false;` line (from
+// src/ui/demo-gate.js) is rewritten to `= true` and the output is the
+// gated public demo at dist/index.html; without it, DEMO_MODE stays
+// false and the full/paid build is written to
+// dist/app-x7k2m9/index.html (kept as index.html so buyers' Add to Home
+// Screen / offline install works; the unguessable directory keeps it off
+// a predictable public URL). See src/ui/demo-gate.js for what the flag
+// gates. This path string lives only in the build script — it is never
+// bundled into either output.
+const DEMO = process.argv.slice(2).includes('--demo');
+const PAID_BUILD_DIR = 'app-x7k2m9';
+const OUT_FILE = DEMO ? join(OUT_DIR, 'index.html') : join(OUT_DIR, PAID_BUILD_DIR, 'index.html');
+const DEMO_FLAG_FROM = 'const DEMO_MODE = false;';
+const DEMO_FLAG_TO = 'const DEMO_MODE = true;';
+
+/**
+ * Flip the demo flag in the bundled JS for a `--demo` build. Asserts the
+ * flag line appears exactly once (fail loudly, like the rest of this
+ * bundler) and uses a function replacer so no `$` sequence in the
+ * surrounding source is treated as a substitution pattern.
+ */
+function applyDemoFlag(js) {
+  const occurrences = js.split(DEMO_FLAG_FROM).length - 1;
+  if (occurrences !== 1) {
+    throw new Error(
+      `build/build.js: --demo expected exactly one "${DEMO_FLAG_FROM}" in the bundle, found ${occurrences}. ` +
+        'src/ui/demo-gate.js must declare `export const DEMO_MODE = false;` verbatim on a single line.'
+    );
+  }
+  return js.replace(DEMO_FLAG_FROM, () => DEMO_FLAG_TO);
+}
 
 const IMPORT_RE = /^import\s*\{([^}]+)\}\s*from\s*['"](\.[^'"]+)['"];?\s*$/;
 // A module's public-interface index.js re-exporting its internals, e.g.
@@ -126,7 +172,8 @@ function bundleJs() {
   const body = modules
     .map(({ path, source }) => `// ---- ${path.slice(ROOT.length + 1)} ----\n${transformModule(source)}`)
     .join('\n\n');
-  return `(function () {\n"use strict";\n${body}\n})();`;
+  const wrapped = `(function () {\n"use strict";\n${body}\n})();`;
+  return DEMO ? applyDemoFlag(wrapped) : wrapped;
 }
 
 function bundleCss() {
@@ -174,10 +221,27 @@ function build() {
   // happen regardless of what the bundled source contains.
   html = html.replace(scriptTagRe, () => `<script>\n${js}\n    </script>`);
 
-  mkdirSync(OUT_DIR, { recursive: true });
+  // PWA support is added to the full/paid build ONLY — never the demo, so
+  // `grep`-ing dist/index.html for anything PWA-related (manifest,
+  // serviceWorker, apple-mobile-web-app, sw.js) comes back empty. The
+  // manifest/service-worker/icons are written as sidecar files next to
+  // the paid index.html by build/pwa.js.
+  if (!DEMO) {
+    if (!/^\s*<\/head>\s*$/m.test(html) || !/^\s*<\/body>\s*$/m.test(html)) {
+      throw new Error('build/build.js: index.html must have <head>/<body> closing tags on their own lines for the PWA head/register injection');
+    }
+    html = html
+      .replace(/^(\s*)<\/head>\s*$/m, () => `${pwaHeadTags()}\n  </head>`)
+      .replace(/^(\s*)<\/body>\s*$/m, () => `${pwaRegisterScript()}\n  </body>`);
+  }
+
+  mkdirSync(dirname(OUT_FILE), { recursive: true });
   writeFileSync(OUT_FILE, html);
+  if (!DEMO) writePwaAssets(dirname(OUT_FILE));
   const kb = (Buffer.byteLength(html) / 1024).toFixed(1);
-  console.log(`Built dist/index.html (${kb} KB)`);
+  const rel = OUT_FILE.slice(ROOT.length + 1);
+  const suffix = DEMO ? 'DEMO build (gated)' : 'full build (no limits) + PWA sidecars';
+  console.log(`Built ${rel} (${kb} KB) — ${suffix}`);
 }
 
 build();

@@ -8,12 +8,15 @@ import { emptyState } from './empty-state.js';
 import { amountField } from './amount-field.js';
 import { renderMoneyItem } from './money-item.js';
 import { renderMoreOptions } from './more-options.js';
-import { icon, sectionHeading, categoryIconChip } from './icons.js';
+import { renderStatCard } from './stat-card.js';
+import { renderPopup } from './popup.js';
+import { getPeriodLabel } from './period-selector.js';
+import { icon, iconButton, sectionHeading, categoryIconChip } from './icons.js';
 import { formatCents, parseAmountToCents } from '../../core/money.js';
 import { getExpensesForPeriod, getExpensesTotalCents, getKnownCategories, updateExpenseAction, deleteExpenseAction } from '../../modules/expenses/index.js';
 
-// Which expense row (if any) is being edited inline — transient UI state,
-// deliberately outside the store (see docs/ARCHITECTURE.md §4).
+// Which expense's edit popup is open — transient UI state, deliberately
+// outside the store (see docs/ARCHITECTURE.md §4).
 let editingExpenseId = null;
 
 /**
@@ -130,84 +133,123 @@ export function renderExpenseForm({ state, expense = null, initialDescription = 
  * @param {object} options.state
  * @param {Function} options.dispatch
  * @param {() => void} [options.requestRender]
+ * @param {Date} [options.now]
  * @param {{period: string, from: string|null, to: string|null}} options.period
  *   the header bar's global period selector (src/ui/components/
  *   period-selector.js) — the single source of truth for which stretch of
- *   time this list shows; no per-card filter here anymore.
+ *   time this list shows.
+ * @param {boolean} [options.compact] Dashboard summary mode — a capped,
+ *   read-only recent list + "View all expenses →". Default false (the Expenses view).
+ * @param {() => void} [options.onViewAll] target of the "View all expenses →" link (compact only).
  */
-export function renderExpensesSection({ state, dispatch, requestRender, period }) {
-  const expenses = getExpensesForPeriod(state, { period: period.period, from: period.from, to: period.to });
+/** The Dashboard's read-only "Expenses" table — Activity / Category /
+ *  Date / Amount, aligned columns, scrollable on a phone rather than
+ *  overflowing. */
+function renderExpensesTable(expenses) {
+  const rows = expenses.map((expense) =>
+    el('tr', {}, [
+      el('td', { class: 'mini-table__activity' }, [
+        categoryIconChip(expense.category, { small: true }),
+        el('span', { class: 'mini-table__name' }, expense.description || expense.category || 'Expense'),
+      ]),
+      el('td', { class: 'mini-table__cat' }, expense.category || '—'),
+      el('td', { class: 'mini-table__date' }, expense.date),
+      el('td', { class: 'mini-table__amount' }, formatCents(expense.amountCents)),
+    ])
+  );
+  return el('div', { class: 'mini-table__scroll' }, [
+    el('table', { class: 'mini-table' }, [
+      el('thead', {}, el('tr', {}, [el('th', {}, 'Activity'), el('th', {}, 'Category'), el('th', {}, 'Date'), el('th', { class: 'mini-table__amount' }, 'Amount')])),
+      el('tbody', {}, rows),
+    ]),
+  ]);
+}
+
+export function renderExpensesSection({ state, dispatch, requestRender, now = new Date(), period, compact = false, onViewAll }) {
+  const allForPeriod = getExpensesForPeriod(state, { period: period.period, from: period.from, to: period.to });
+  const expenses = compact ? allForPeriod.slice(0, 6) : allForPeriod;
+
+  if (compact) {
+    const body = expenses.length > 0 ? renderExpensesTable(expenses) : emptyState('No spending in that period.');
+    const total =
+      allForPeriod.length > 0
+        ? el('p', { class: 'expenses-filter__total' }, `${formatCents(getExpensesTotalCents(allForPeriod))} · ${allForPeriod.length} expense${allForPeriod.length === 1 ? '' : 's'} this period`)
+        : null;
+    const headerAction = onViewAll ? el('button', { type: 'button', class: 'link-button', onclick: onViewAll }, 'View all →') : null;
+    return el('section', { class: 'card', 'aria-labelledby': 'expenses-heading' }, [
+      el('div', { class: 'card__header-row' }, [sectionHeading('receipt', 'Expenses', 'expenses-heading'), headerAction].filter(Boolean)),
+      body,
+      total,
+    ].filter(Boolean));
+  }
 
   const items = expenses.map((expense) => {
-    if (expense.id === editingExpenseId) {
-      return el('li', { class: 'money-item money-item--editing' }, [
-        renderExpenseForm({
-          state,
-          expense,
-          onSubmit: (changes) => {
-            dispatch(updateExpenseAction(expense.id, changes, { now: new Date() }));
-            editingExpenseId = null;
-            requestRender?.();
-          },
-          onCancel: () => {
-            editingExpenseId = null;
-            requestRender?.();
-          },
-        }),
-      ]);
-    }
     return renderMoneyItem({
       icon: categoryIconChip(expense.category),
       title: expense.description || expense.category || 'Expense',
       meta: [formatCents(expense.amountCents), expense.category, `${expense.date}`],
-      actions: [
-        el(
-          'button',
-          {
-            type: 'button',
-            class: 'btn btn--secondary btn--small',
-            onclick: () => {
+      // Compact (Dashboard) is a read-only glance — edit/delete live on
+      // the Expenses view, as a pencil + trash (same as the Income view).
+      actions: compact
+        ? []
+        : [
+            iconButton('edit', `Edit ${expense.description || expense.category || 'expense'}`, () => {
               editingExpenseId = expense.id;
               requestRender?.();
-            },
-          },
-          'Edit'
-        ),
-        el(
-          'button',
-          {
-            type: 'button',
-            class: 'btn btn--secondary btn--small',
-            onclick: () => {
-              if (window.confirm('Delete this expense? Its amount will be added back to your current balance.')) {
-                dispatch(deleteExpenseAction(expense.id));
-              }
-            },
-          },
-          'Delete'
-        ),
-      ],
+            }),
+            iconButton(
+              'trash',
+              `Delete ${expense.description || expense.category || 'expense'}`,
+              () => {
+                if (window.confirm('Delete this expense? Its amount will be added back to your current balance.')) {
+                  dispatch(deleteExpenseAction(expense.id));
+                }
+              },
+              { tone: 'attention' }
+            ),
+          ],
     });
   });
 
-  const list = expenses.length > 0 ? el('ul', { class: 'money-list' }, items) : emptyState('No spending in that period.');
+  const list = expenses.length > 0 ? el('ul', { class: 'money-list money-list--cards' }, items) : emptyState('No spending in that period.');
 
-  // Always shown — the header bar's period is always some explicit
-  // selection now (no more implicit "Recent" default), so a total is
-  // always meaningful.
-  const total =
-    expenses.length > 0
-      ? el('p', { class: 'expenses-filter__total' }, `Total: ${formatCents(getExpensesTotalCents(expenses))} · ${expenses.length} expense${expenses.length === 1 ? '' : 's'}`)
-      : null;
+  // The one global number for this tab — total spent over the header
+  // bar's selected period, replacing the old plain "Total: …" line.
+  const summaryCard = renderStatCard({
+    icon: 'receipt',
+    label: `Spent · ${getPeriodLabel(period)}`,
+    value: formatCents(getExpensesTotalCents(allForPeriod)),
+    note:
+      allForPeriod.length > 0
+        ? `${allForPeriod.length} expense${allForPeriod.length === 1 ? '' : 's'}`
+        : 'No spending in this period.',
+    tone: 'caution',
+  });
 
-  // No add-expense form here — that's the hero's job now (its own inline
-  // "+ Add expense" button, src/ui/components/safe-to-spend-hero.js), and
-  // no per-card period filter — that's the header bar's job now
-  // (src/ui/components/period-selector.js). This section is purely the
-  // expenses list + inline edit/delete for whatever period is selected.
-  return el(
-    'section',
-    { class: 'card', 'aria-labelledby': 'expenses-heading' },
-    [sectionHeading('receipt', 'Expenses', 'expenses-heading'), total, list].filter(Boolean)
-  );
+  const editing = editingExpenseId ? allForPeriod.find((e) => e.id === editingExpenseId) : null;
+  const closeEdit = () => {
+    editingExpenseId = null;
+    requestRender?.();
+  };
+  const editPopup = editing
+    ? renderPopup({
+        titleId: 'edit-expense-heading',
+        title: 'Edit expense',
+        body: renderExpenseForm({
+          state,
+          expense: editing,
+          onSubmit: (changes) => {
+            dispatch(updateExpenseAction(editing.id, changes, { now }));
+            closeEdit();
+          },
+          onCancel: closeEdit,
+        }),
+        onClose: closeEdit,
+      })
+    : null;
+
+  // No outer container card — the summary card above, then each expense
+  // as its own card (`money-list--cards`); the pencil opens an edit
+  // popup. The "Expenses" page title lives in the view header.
+  return el('div', { class: 'view-stack' }, [summaryCard, list, editPopup].filter(Boolean));
 }

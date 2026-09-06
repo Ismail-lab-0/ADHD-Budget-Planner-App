@@ -7,6 +7,7 @@ import {
   isOverdue,
   getGreetingPeriod,
   formatFriendlyDate,
+  formatShortWeekdayDate,
   addDays,
   addMonths,
   daysBetween,
@@ -84,6 +85,22 @@ describe('formatFriendlyDate', () => {
     assert.match(formatted, /Friday/);
     assert.match(formatted, /August/);
     assert.match(formatted, /2026/);
+  });
+});
+
+describe('formatShortWeekdayDate', () => {
+  test('"Mon 31 Aug" — short weekday + day + short month, from a YYYY-MM-DD key', () => {
+    assert.equal(formatShortWeekdayDate('2026-08-31'), 'Mon 31 Aug');
+  });
+
+  test('accepts a Date too', () => {
+    assert.equal(formatShortWeekdayDate(new Date(2026, 7, 21)), 'Fri 21 Aug');
+  });
+
+  test('null / undefined / an unparseable string return null', () => {
+    assert.equal(formatShortWeekdayDate(null), null);
+    assert.equal(formatShortWeekdayDate(undefined), null);
+    assert.equal(formatShortWeekdayDate('not-a-date'), null);
   });
 });
 

@@ -36,12 +36,17 @@ user decision:
   medical advice.
 - **Product scope is budgeting/Safe-to-Spend only** (see
   `docs/PRODUCT.md`). Do not implement general task management, a
-  calendar, routines, general life planning, goals, a weekly productivity
-  review, a task recommendation engine, or a focus timer — these were part
-  of an earlier, retired product direction ("ADHD Life Planner") and are
-  explicitly out of scope now. This applies even though working code for
-  some of them (Tasks, Next Action) still exists in the repo — see
-  "Current status" below.
+  calendar, routines, general life planning, life-goals (aspirations/
+  habits/projects), a weekly productivity review, a task recommendation
+  engine, or a focus timer — these were part of an earlier, retired
+  product direction ("ADHD Life Planner") and are explicitly out of scope
+  now. **Note:** the "Goals" tab that exists today is *savings goals* — a
+  budgeting concept (money set aside toward a target: emergency fund, new
+  laptop), added at the user's explicit request (`docs/PRODUCT.md` §4
+  item 17). It is not the retired life-goals module; the name collision
+  is intentional and resolved in `docs/PRODUCT.md` §5. This applies even
+  though working code for some retired features (Tasks, Next Action) may
+  still exist in the repo — see "Current status" below.
 
 ## Product discipline
 
@@ -1572,6 +1577,1259 @@ brand area is back to just the wallet icon + "Money," unchanged from
 before the currency picker ever existed. 487/487 tests pass (4 new, for
 `getCurrencySymbol`); verified through the real UI that the icon shows
 the correct sign and updates immediately on selection.
+
+**Added Debt Tracking, at the user's explicit and detailed request —
+ahead of `docs/ROADMAP.md`'s phase order (same footing as "Brain dump"
+before it), additive, and with every prior phase left intact.** A new
+`src/modules/debts/` module (`actions`/`reducer`/`selectors`/
+`payment-effect`/`index`, the same shape as every other list-entity
+module) holds `Debt` records: `name`, `originalBalanceCents`,
+`currentBalanceCents`, `minimumPaymentCents`, `dueDate` (a **day-of-month
+integer 1–31**, matching the request's `dueDate: 15` example — not a
+YYYY-MM-DD; debt payments are treated as monthly-recurring for
+scheduling, `paymentFrequency` only feeds the payoff estimate),
+`interestRate` (optional APR percent, `null` = not entered, `0` is a
+distinct valid value), `paymentFrequency` (`monthly`/`biweekly`/
+`weekly`). `schemaVersion` bumped 8 → 9 (`migrateV8ToV9` — purely
+additive, adds empty `debts` + `debtPayments`; both added to
+`ARRAY_COLLECTION_KEYS`). Everything documented in the same change:
+`docs/DATA-MODEL.md` (root shape, "Debt" + "DebtPayment" entities, §7
+migration), `docs/SAFE-TO-SPEND.md` §3c, `docs/ARCHITECTURE.md` (module
+tree + the cross-slice-exception paragraph, now four uses), `docs/
+PRODUCT.md` §4 item 16, `docs/ROADMAP.md`.
+
+- **Safe-to-Spend is untouched by design.** `getSafeToSpend` never reads
+  `state.debts`/`state.debtPayments`; `src/modules/debts/` has no import
+  relationship with `src/modules/safe-to-spend/` either way — the same
+  "excluded by construction" treatment as `CategoryBudget`
+  (`docs/SAFE-TO-SPEND.md` §3b/§3c). Owing money doesn't reduce
+  Safe-to-Spend; only a *payment* does, and only through the ordinary
+  Expense it logs.
+- **A payment is a cross-slice effect, the fourth use of that documented
+  exception** (`docs/ARCHITECTURE.md` §7). `recordDebtPaymentAction` →
+  `src/main.js`'s `rootReducer` special-cases `debts/record-payment` and,
+  in one atomic transition: decrements the debt's `currentBalanceCents`
+  (clamped at 0 — a debt **never** goes negative; an over-payment zeroes
+  it but still logs the full amount that really left the account),
+  appends a real `Expense` (category `"Debt Payment"`, `description`
+  `"Payment: <name>"`, a `debtId` back-reference), debits
+  `budget.currentBalanceCents` by that expense's amount, and appends a
+  `DebtPayment` log record (the Debt-side counterpart to `BillPayment`/
+  `IncomeReceipt`, denormalized `name`, links `expenseId`). So the money
+  hits Current Balance → Safe-to-Spend **exactly once**, via the Expense
+  path — never double-counted against the debt balance
+  (`tests/unit/debts-integration.test.js` proves Safe-to-Spend drops by
+  exactly the payment amount, not twice).
+- **UI, reusing the existing design system, no new visual language.** New
+  `src/ui/components/debts-section.js` — a "Debt overview" `.card` in the
+  dashboard's main column (between Categories and Expenses; `order` values
+  added in `components.css` + `responsive.css`). Per debt: name, `$X
+  remaining · $Y original`, a progress bar reusing the Categories card's
+  `.category-row__bar`/`.category-row__bar-fill` primitives (a fuller bar
+  = more paid off, so the default green fill reads correctly with no
+  status modifier), `N% paid off` (or `Paid off 🎉` with positive-tone
+  styling — the debt is **not** auto-deleted), an optional payoff-estimate
+  line (only when an APR is set, always labelled "(estimate)"; a payment
+  that doesn't cover one month's interest shows a calm note, never an
+  impossible date), and a "Make payment" button. "Manage debts" opens a
+  popup with the add form + inline edit/delete rows, mirroring
+  `category-budgets-section.js`/`bills-due-soon.js` exactly (add form at
+  top, `window.confirm` on delete). The payment popup prefills the
+  minimum payment, defaults the date to today, and takes an optional
+  note. Add/edit form: name/original/current/minimum/due-day up front,
+  APR + frequency behind the shared "+ More options"
+  (`renderMoreOptions`).
+- **"Bills due soon" integration** (`docs/PRODUCT.md` §8): a debt's
+  minimum payment shows as an ordinary-looking row in the *existing*
+  "Bills due soon" card — no separate "debt bills" list — with a "Make
+  payment" action that opens the Debt overview card's payment popup via a
+  new exported `openDebtPaymentPopup` (same "set module state + request a
+  render" pattern as `openBrainDumpCapture`; the popup is rendered by
+  `renderDebtsSection`, always in the tree). `getUpcomingDebtPayments`
+  resolves each debt's `dueDate` day-of-month to the next such calendar
+  day. A debt already paid for the current month (a `DebtPayment` dated
+  in it — `hasDebtPaymentInMonth`) drops off the card, mirroring a paid
+  Bill. "Manage bills" stays bills-only.
+- **Summary strip** (`src/ui/components/summary-strip.js`) gains a "Total
+  debt" tile (`getTotalDebtCents`) inserted after "Total bills" — but
+  **only when the user is tracking at least one debt**, so the strip
+  stays four tiles for everyone else (progressive disclosure, CLAUDE.md).
+  The request's §4 "show $0 when there are no debts" is instead satisfied
+  by the always-present Debt overview card's own empty state. `auto-fit`/
+  `minmax` handles the extra tile with no breakpoint change.
+- **Edge cases handled** (`docs/PRODUCT.md` §15): $0-balance debt
+  (excluded from "due soon", shows "Paid off 🎉"), over-payment (clamp +
+  full-amount expense), missing APR / 0% APR (no estimate vs. simple
+  division), decimal payments (integer cents from the form), delete a
+  debt (its past payment `Expense`s stay in history — `deleteDebtAction`
+  only removes the `Debt`), refresh (persists through the normal storage
+  adapter + v8→v9 migration; existing users get `debts: []` with no data
+  loss). Not handled by design (same scoping as Bills/Income in
+  `docs/DATA-MODEL.md` §3a): editing/deleting a debt or its payment
+  Expense doesn't retroactively re-sync balances; no duplicate-payment
+  detection beyond what the visible `DebtPayment` log gives.
+- **Tests:** `tests/unit/debts.test.js` (reducer CRUD/validation, clamp,
+  progress, next-due-date, payoff estimate, "due soon" rows) +
+  `tests/unit/debts-integration.test.js` (the `rootReducer` cross-slice
+  transition, no-double-count, over-payment, delete-keeps-expenses) + a
+  v8→v9 block in `schema.test.js` — 527/527 pass (40 new). Build passes.
+  UI verified via the session's usual throwaway DOM-shim smoke test
+  (empty state, debt rows + progress + payoff line, paid-off state, the
+  conditional summary tile, bills-due-soon merging bills + debt rows, a
+  paid debt leaving that list), then discarded per
+  `docs/TEST-PLAN.md`'s manual-DOM-testing policy.
+- **Bundler gotchas hit and fixed** (`build/build.js` concatenates every
+  module into one scope): `FREQUENCY_LABEL`/`frequencyField` collided
+  with `income-section.js` → renamed `DEBT_FREQUENCY_LABEL`/
+  `debtFrequencyField`; the multi-line `import { ... }` and multi-line
+  re-`export { ... }` this bundler's single-line regexes don't match had
+  to be collapsed to one line each.
+
+**Added a left sidebar navigation, at the user's explicit and detailed
+request — but as *in-page section navigation*, not a return to
+multi-view routing, confirmed with the user via `AskUserQuestion`
+before any code was written.** The request's own constraints ("don't
+rewrite working functionality", "simplest architecture compatible with
+the existing app", "don't overbuild", "don't redesign the dashboard")
+plus this file's history — the multi-view Dashboard/Money nav + hash
+routing was removed at the user's own earlier explicit request, and an
+icon-rail nav was explicitly declined once already (see the
+"visual/structural redesign" entries above) — pointed to one answer: the
+app stays **one scrolling screen**, and the sidebar scrolls to / spies
+on the existing dashboard cards. No router, no URL/hash changes, no
+storage/schema changes, no card/calculation/reducer changes.
+
+- **New `src/ui/components/sidebar.js`** — `renderSidebar({
+  onToggleCollapse, onNavigate, onCloseDrawer })` returns `{ nav, scrim
+  }`. 8 items in 3 groups, each mapped to an existing card's heading id:
+  **Main** — Dashboard (→ page top); **Money** — Balance
+  (`current-balance-heading`), Income (`upcoming-income-heading`),
+  Expenses (`expenses-heading`), Bills (`bills-due-soon-heading`), Debts
+  (`debts-heading`); **Planning** — Categories (`categories-heading`),
+  Savings (`savings-heading`). No "Settings" item — theme/currency
+  already live in the header bar and there is no settings screen (not
+  inventing one — the request's §16 rules that out). Icons reuse
+  `src/ui/components/icons.js`; 5 new hand-authored glyphs added there
+  (`menu`, `home`, `credit-card`, `chevron-left`, `chevron-right`) in
+  the same 24×24 stroke style — no icon library added.
+- **Desktop (`>=1024px`)** — a fixed left rail; collapsible to
+  icons-only (68px) with the section name kept reachable via each
+  button's `title` (hover tooltip) + `aria-label` (AT), active highlight
+  still shown. Active item follows scroll position via a lightweight
+  rAF-throttled `scroll` listener in `src/ui/shell.js` calling
+  `syncSidebarActive()` (patches the sidebar DOM directly — no store
+  round-trip, no re-render), plus an immediate set on click with a
+  ~700ms spy-suppression so it doesn't flicker through sections during
+  the smooth scroll. `.app-main` gets a left offset for the rail; the
+  dashboard's content moved into a new `.dashboard-body` wrapper that
+  re-establishes the 1040px centered measure inside that offset area
+  (onboarding, which has no sidebar, is untouched — the `body.has-sidebar`
+  class gates all of it).
+- **Mobile (`<1024px`)** — the rail goes off-canvas; a hamburger in the
+  header bar (`src/ui/components/header-bar.js`, new `onOpenNav`, hidden
+  by CSS at `>=1024px`) opens it as a slide-in drawer with a dim scrim.
+  Selecting an item scrolls **and** auto-closes the drawer; scrim
+  click / Escape / an in-drawer × button also close it; `<body>` scroll
+  is locked while open (folded into shell.js's existing
+  popup-scroll-lock line); focus moves into the drawer on open and back
+  to the hamburger on close (rAF, matching `popup.js`'s pattern). The
+  drawer stays `visibility: hidden` while off-canvas so it's inert to
+  keyboard/AT when closed.
+- **The dashboard's two-column grid breakpoint moved `1024px` →
+  `1280px`** — the fixed rail eats ~270px, so two columns only get an
+  uncramped measure once the viewport is genuinely wide enough
+  (CLAUDE.md "Responsive design" — cards stay uncramped). Between 1024
+  and 1279 the dashboard is a single comfortable column beside the rail.
+  This is the only pre-existing responsive rule that changed; the mobile
+  flat-`order` sequence is unchanged.
+- **State** — `collapsed` / `drawerOpen` / `activeNavId` are ephemeral
+  module-level state in `sidebar.js`, resetting on reload, exactly like
+  `selectedPeriod` and every other UI toggle in this app. Deliberately
+  **not** persisted: the request's §16 says "no new settings", and
+  CLAUDE.md forbids a bespoke `localStorage` write outside the storage
+  adapter — adding `settings.sidebarCollapsed` for a cosmetic default
+  wasn't worth either cost.
+- **Accessibility** — `<nav aria-label="Sections">`, real `<button>`s
+  with visible text + `aria-label` + `title`, `aria-current="true"` on
+  the active item, `aria-expanded` on the collapse toggle and hamburger,
+  `aria-controls="app-sidebar"`, Escape-to-close, focus management on
+  the drawer. Icons are `aria-hidden` (never the only label), per the
+  existing icon-set contract.
+- **Docs** updated in the same change: `docs/ARCHITECTURE.md`
+  (`shell.js` + `components/` descriptions — still one screen, now with
+  in-page section nav). No `docs/DATA-MODEL.md` / `docs/SAFE-TO-SPEND.md`
+  change — nothing about data or the formula moved.
+- **Verification** — `npm run build` + all 527 existing tests pass
+  unchanged (no logic touched). UI checked via the session's usual
+  throwaway DOM-shim smoke test: `renderSidebar` structure (nav / 3
+  groups / 8 links / labels / tooltips / default-active Dashboard /
+  toggle / close / scrim), nav-item click → `onNavigate(id)`, collapse /
+  close / Escape wiring, `scrollToNavTarget('dashboard')` → scroll to
+  top, the full dashboard rendering with the sidebar + scrim +
+  `.dashboard-body` and every heading target present with all existing
+  cards intact, and the scroll-spy marking the correct section active
+  from simulated heading positions (exactly one active link,
+  `aria-current` set). Then discarded per `docs/TEST-PLAN.md`'s
+  manual-DOM policy. Bundler gotchas avoided: single-line imports/
+  exports in `sidebar.js`, and all new top-level names prefixed
+  (`renderSidebar`, `syncSidebarActive`, `SIDEBAR_ITEMS`,
+  `scrollToNavTarget`, `isSidebarCollapsed`, …) since the bundler
+  concatenates every module into one scope.
+
+**The sidebar was then converted from in-page anchors into a real
+multi-view app, at the user's explicit and detailed request** — a direct
+reversal of the "single scrolling screen" decision (and of the in-page
+sidebar built the message before). Each sidebar item is now a dedicated
+screen; the main content area swaps completely between them; the sidebar
++ header bar are the persistent shell. Scroll-spy and the scroll-to
+mechanism from the previous version are gone.
+
+- **Routing: a ~55-line hash router, `src/ui/router.js`** (`getCurrentView`
+  / `navigateToView` / `initViewRouter`) — no framework (docs/
+  ARCHITECTURE.md §2). `#dashboard` (default), `#income`, `#expenses`,
+  `#bills`, `#debts`, `#budget`, `#categories`, `#settings`; `#index` and
+  a bare/unknown hash both resolve to the Dashboard. Application state is
+  **completely independent of the hash** — switching views, refresh, and
+  browser Back/Forward never touch the store or localStorage (verified in
+  the smoke test). `src/ui/shell.js` renders `VIEW_RENDERERS[getCurrentView()]`
+  into `<main>` and re-renders on **both** store changes and `hashchange`
+  (the latter also scrolls the new view to the top — docs/PRODUCT.md
+  §15/§17). Onboarding still gates everything and ignores the route.
+- **`src/ui/components/app-frame.js` (`renderAppFrame`)** — the persistent
+  shell every screen wraps its content in: sidebar + mobile scrim +
+  header bar + an optional `<h1>`. It wires navigation
+  (`onNavigate → navigateToView`, closing the mobile drawer first), the
+  collapse toggle, the drawer, and the global period selector **once**,
+  for all eight screens.
+- **`src/ui/components/sidebar.js` rewritten**: view-based `SIDEBAR_ITEMS`
+  (Dashboard / Income / Expenses / Bills / Debts / Budget / Categories /
+  Settings, grouped Main / Money / Planning / Other), `renderSidebar({
+  activeView, … })` (active item = current route, `aria-current="page"`),
+  `data-view` hooks. Deleted: `activeNavId`, `scrollToNavTarget`,
+  `syncSidebarActive`, `applySidebarActiveClass`, `spySuppressedUntil`,
+  the `getSidebarActiveId`/`setSidebarActiveId` pair, and shell.js's
+  passive `scroll` listener. Kept: the collapsed/drawer ephemeral state
+  and all the desktop-rail / mobile-drawer CSS from the previous message
+  (unchanged).
+- **Seven new screen files** (`src/ui/screens/{income,expenses,bills,
+  debts,budget,categories,settings}-view.js`), each a thin composition —
+  they reuse the *same* section components the Dashboard summarises, via
+  a new `compact` flag on each: `compact: true` (Dashboard) = a preview
+  list + a "View all X →" link that routes to the dedicated view, with
+  Balance/Savings shown read-only (`renderSingleValueSection`'s new
+  `readOnly`) and no add/edit/delete; `compact` omitted (dedicated view)
+  = the full existing management UI, popups and all. So there is **one
+  implementation per feature**, not two. The Income view builds a small
+  view/add/edit/delete/mark-received list from the existing
+  `renderIncomeForm` + income actions (docs/PRODUCT.md §10 — no such list
+  UI existed before); the Budget view = Current Balance + Savings
+  (editable here, read-only on the Dashboard) + the period Money-in/out
+  card + a Safe-to-Spend line; the Settings view consolidates the
+  *existing* `settings.*` state (display name, theme, currency) into one
+  screen — no new settings invented (docs/PRODUCT.md §16 rules that out).
+
+**Follow-up, at the user's request: the Income / Expenses / Bills / Debts
+views got a green "+ Add" button top-right and no inline entry fields.**
+`renderAppFrame` gained a `titleAction` slot (rendered right of the `<h1>`
+in `.view-header`, now a flex row). Each of the four views passes a
+`btn btn--primary btn--small` "+ Add X" button there (`.btn--primary` is
+already the accent/green fill — no new colour) that opens the existing
+add form (`renderExpenseForm` / `renderIncomeForm` / `renderBillForm` /
+`renderDebtForm`) in a `renderPopup`, via a per-view module-level
+`add*Open` flag. The always-visible add forms were removed: the Expenses
+section's `showAddForm` param is gone (and its now-unused
+`createExpenseAction` import); the Income view's card no longer renders
+`renderIncomeForm` inline; and the "Manage bills" / "Manage debts" popups
+(reached from `renderBillsDueSoon` / `renderDebtsSection` in their full
+mode) lost their top-of-popup add form — they're now edit/delete-only
+lists, retitled "All bills" / "All debts". So each of the four views
+shows only its information (lists + per-row quick actions + edit/delete)
+plus the one green add button. The Dashboard is untouched (it never had
+`titleAction`; its previews stay read-only with "View all →" links).
+Verified in the smoke test: green `.btn--primary` button in each view
+header, zero `<form>` on the page until it's clicked, click opens the
+titled add popup, close works; Dashboard header has no add button.
+
+**Follow-up spacing/naming pass (from user screenshots):** (1) the app
+brand is now **"Budget and Planner"** (was "Money"), and after the user
+said the wordmark looked unpolished it became a proper lockup — new
+shared `src/ui/components/brand.js` (`renderBrandMark`) — an
+accent-filled 34px rounded badge
+holding a new hand-authored `brand` glyph (a rounded frame + check —
+"money that's accounted for"), next to a two-line wordmark, **"Budget"**
+(`--font-size-lg`, tight tracking) over **"and Planner"**
+(`--font-size-xs`, uppercase, letter-spaced, `--color-text-secondary`) —
+a deliberate stacked logotype that fits the 240px rail without clipping.
+`.sidebar__brand-name` / `.header-bar__brand-name` rules were replaced by
+`.brand*` rules; the collapsed-sidebar rule now hides `.brand__name`; the
+sidebar's **"Money" nav-group label** is unrelated and unchanged. The
+brand mark then moved to be **sidebar-only** (removed from
+`header-bar.js`, where it had duplicated on desktop) — the header's left
+slot now holds just the mobile hamburger.
+(2) `.money-form` is now `display: flex; flex-direction: column; gap:
+var(--space-4)` with `.money-form .field { margin-bottom: 0 }` — every
+child (including a bare name `<input>`, which previously had no
+`margin-bottom` and butted straight against the next field's label) now
+gets one uniform gap; `.modal__body > .money-form` also drops its inline
+top divider (redundant under the modal header). (3) `.bills-due-soon__row`
+gets a hairline `border-bottom` between rows (tinted toward the card's
+amber accent via `color-mix`, with a `--color-border` fallback, since
+plain border is faint on that background). (4) `select.field__input` got
+real vertical padding, and `.settings-view .field__input/.money-form` are
+capped at `26rem` so a lone `<select>` doesn't stretch the full width of
+the wide settings card. All CSS-only except the brand strings and the
+`view-stack settings-view` class on the Settings body. 527/527 tests
+still pass.
+- **`src/ui/screens/dashboard.js` is now the overview** — hero + summary
+  strip + `compact` preview cards, each linking out. It composes via
+  `renderAppFrame` (its greeting/date became the frame's title/subtitle;
+  `.today-header` CSS deleted). The 2-column `.dashboard-grid` (and its
+  1280px breakpoint from the previous message) is unchanged.
+- **`debts-section.js`**: `openDebtPaymentPopup` (the cross-card opener
+  added last message so "Bills due soon" could pay a debt inline) is
+  **removed** — a debt row in "Bills due soon" now routes to `#debts`
+  instead, where the payment popup lives. The "Make payment" + "Manage
+  debts" popups are otherwise unchanged, just `compact`-gated.
+- **Data model / calculations: zero changes.** No schema bump, no reducer
+  or selector touched, no `src/modules/**` change at all. Every view
+  reads the same `state` and calls the same `dispatch` — proven in the
+  smoke test (add an expense from the Expenses view → the Dashboard
+  summary, Current Balance, and Safe-to-Spend all reflect it; navigating
+  between views leaves `JSON.stringify(state)` byte-identical).
+- **Verification**: `npm run build` + all 527 existing tests pass
+  unchanged. UI checked via the session's throwaway DOM-shim smoke test
+  (router parsing incl. aliases/unknown fallback + navigate
+  change-detection; all 8 views render with the shell + exactly one
+  active nav item matching the route + the right `<h1>`; sidebar groups
+  in order; navigation doesn't mutate state; the add-expense-on-Expenses-
+  view → Dashboard data-sync flow through the real form; Dashboard shows
+  "View all …" links and *no* "Manage …"/"Edit …" links), then
+  discarded. `docs/ARCHITECTURE.md` (§6 tree — router.js, app-frame.js,
+  the screens list, the sidebar description) and `docs/PRODUCT.md` §11
+  updated in the same change.
+- **Bundler gotchas**: single-line `import { … }` / re-`export { … }`
+  only (the build's regexes don't match multi-line — hit it in the three
+  view files with long import lists, and `build.test.js` catches it by
+  executing the bundle); `FREQUENCY_LABEL` / `incomeRow` collided with
+  `income-section.js` / `upcoming-income.js` → renamed
+  `INCOME_VIEW_FREQUENCY_LABEL` / `incomeViewRow`.
+
+**Light-mode repalette ("Steady"), at the user's request — the warm
+cream + sage green read as competitor-ish.** `src/styles/base.css`'s
+`:root` (light) 13 colour tokens swapped for a cool, low-arousal set: a
+faintly teal-tinted paper ground (`--bg #f2f6f6`), deep slate ink
+(`--text-primary #23323a`, `--text-secondary #566a71`), a calm deep-teal
+accent (`--accent #0e7c76`, `--accent-bg #ddefec`), and cooled
+warning/danger (`#b06f1f` / `#bb463b`). Rationale: cool hues sit easier
+for a low-cognitive-load ADHD UI, and teal keeps the "money = balance /
+clarity / positive" association without being the same green; red stays
+the sole "negative" signal. Every value contrast-checked (AA+ at the
+weight it's used). Nothing else touched — the ~180 `var(--color-*)`
+call sites are unchanged (they alias these), the hero gradient already
+reads `var(--color-accent-muted)`, and `dist/index.html` was rebuilt.
+Shadow tint moved warm-brown → cool slate (`rgba(26,42,49,…)`). The
+**dark** theme's *accent trio only* was retuned to teal (`--accent
+#5fb3ab`) so the brand/positive colour matches between modes; its warm
+charcoal base is otherwise untouched and flagged in `base.css` as a
+candidate for a later cool-dark pass. The fixed `--color-cat-*` category
+identifier hues were deliberately left as-is (they're not theme-swapped
+brand colour — see their comment in `base.css`).
+
+**Dashboard trimmed to "KPIs + graphs", at the user's request.** The
+dashboard is now a plain vertical stack: a 4-tile stat strip (**Current
+balance · Total debt · Savings · Bills due** — all "right now" values,
+no period dependency), the Safe-to-Spend hero, **two charts**, the Inbox,
+the privacy line. All the compact preview cards
+(right-now/balance/savings/categories/debts/expenses/bills-due-soon/
+upcoming-income) and the whole 2-column `.dashboard-grid` / `order` /
+1280px machinery are removed — every one of those features is still
+reachable from its sidebar view, so nothing was lost.
+
+- **`src/ui/components/charts.js` (new)** — `renderPieChart` (a donut:
+  part-to-whole spending by category for the selected period, per-category
+  identity colours, top 5 + an "Other" fold, an always-present legend
+  carrying label + value + %) and `renderColumnChart` (single accent-hue
+  columns: spending bucketed over time). Hand-authored SVG built as a
+  **string** (the same technique as `icons.js` — no chart library,
+  nothing added to the zero-dep / self-contained build); interactivity is
+  a native `<title>` per mark. Built following the `dataviz` skill: one
+  hue for the single-series column chart (no legend — the heading names
+  it), 3 recessive hairline gridlines, 4px rounded bar tops on a square
+  baseline, ≤24px bars, a selective single direct label on the tallest
+  bar; 2px surface-colour gaps between donut wedges; text in text tokens,
+  never the mark colour; calm empty states.
+- **New pure selectors in `src/modules/dashboard/index.js`**:
+  `getExpenseBreakdownByCategory` (group `Expense` records by category in
+  a range, sorted desc) and `getExpensesOverTime` (bucket them by
+  day/week/month — granularity adapts to the span; zero buckets kept so a
+  quiet stretch reads as a gap; an unbounded range = last 6 calendar
+  months). `Expense` records only (a debt payment is already one; a
+  `BillPayment` isn't and stays out).
+- **`summary-strip.js` reworked** to the four snapshot KPIs above (was
+  Total expenses / Total bills / Bills due / Inbox items + a conditional
+  Total debt).
+- **`--color-cat-*` re-stepped** (`base.css`, light + both dark blocks)
+  — the donut surfaced that the old 7 category hues **hard-failed** the
+  data-viz normal-vision floor (worst adjacent ΔE 11.6, gate is 15) and
+  the chroma floor (two read as grey). The new light set
+  (`#1f9e63,#e08133,#2f7fd6,#d24f9a,#8a5fd0,#d94b3e,#0f9b9b`) clears both
+  (normal-vision 15.3, chroma all pass); the remaining colour-blindness
+  deltas are warn-band, which the method permits **because the donut
+  always ships the legend + per-slice value/% as the identity channel**.
+  Seven arbitrary hues can't fully clear CVD on one surface — a known
+  limit of the medium, mitigated, not a bug. Also flows to the category
+  icon chips app-wide (an improvement there too).
+- **Verification**: `npm run build` + all 527 tests pass. Smoke-tested
+  the two selectors (grouping/sum/sort; adaptive day/week/month
+  bucketing; unbounded = 6 months) and both chart renders (donut path +
+  2px gaps + hover titles + legend; accent bars + 3 gridlines + no
+  legend; empty states), then the full dashboard (strip + hero + exactly
+  two `.viz-card`s + Inbox; no `.dashboard-grid`, no old preview cards);
+  palette re-run through the skill's validator. `docs/ARCHITECTURE.md`
+  updated in the same change.
+
+**Dashboard reshaped to match a reference the user shared** (superseding
+the "KPIs + donut + column" version from the message before — that
+donut/`renderPieChart` and the `getExpenseBreakdownByCategory`/
+`getExpensesOverTime` selectors are **removed**). It's now, top to
+bottom: the **Safe-to-Spend hero**; two headline **stat cards**
+(`src/ui/components/stat-card.js` — Total expenses *this month* with a
+real month-over-month `±% ↑/↓ from last month` delta chip; Total savings,
+no delta since savings has no history); an **"Overview" chart** —
+`renderColumnChart` reworked to **grouped 2-series columns**, Money in
+(accent) vs Money out (amber `--color-status-caution-text`) per month for
+the current calendar year (12 bands, ≤20px sub-bars, 2px surface gap,
+3 gridlines, a 2-item legend, `<title>` hover); a compact **Recent
+Expenses** list (`renderExpensesSection` `compact` + "View all →"); a
+compact **Budget progress** card (`renderCategoryBudgetsSection`
+`compact`); the **Inbox** (kept — still the only draft access); the
+privacy line. `renderSummaryStrip` / `summary-strip.js` **deleted**
+(replaced by the hero + 2 stat cards). New selectors in
+`src/modules/dashboard/index.js`: `getMonthlyInVsOut` (12×
+`getPeriodSummary`) and `getExpensesMonthOverMonth`. Current Balance /
+Total debt / Bills-due are no longer surfaced on the dashboard (all
+still on their own views) — the reference struck "Account Balance" and
+showed no debt.
+
+**Then a full visual pass on that dashboard against the same reference,
+at the user's very detailed request** ("polished SaaS/fintech product").
+`src/ui/screens/dashboard.js` now builds a **responsive CSS grid**, not
+a stack: `.dashboard__top` = top row [**Safe to Spend** | Total Expenses
+| Total Savings] (3-across at ≥1024px via `1.35fr 1fr 1fr`; at
+600–1023px Safe-to-Spend spans the row above the two stat cards; 1-col
+on phones) → the full-width **Income vs Expenses** chart → `.dashboard__bottom`
+= [Budget progress | Recent Expenses] (2-up only at ≥1024px) → Inbox →
+privacy. Key styling changes: `.hero` (the Safe-to-Spend card) lost its
+loud gradient + `--shadow-md` — prominence now comes from a flat
+`--color-accent-muted` tint + the page's largest figure (**new
+`--font-size-3xl` = 2.25rem, sans**, dropping the serif) + a full-width
+"+ Add expense" button; it's left-aligned and flex-column to sit in a
+grid cell. `.dashboard .card` gets `--space-6` padding. `renderColumnChart`
+viewBox widened to 560×280 (from 360×200), bigger axis/label type, capped
+at `max-height: 320px`. **Recent Expenses is now a real `<table>`**
+(`renderExpensesSection` `compact` branch — `renderExpensesTable`,
+`.mini-table` in an `overflow-x:auto` wrapper so it never overflows a
+phone): Activity (icon + name) / Category / Date / Amount (right-aligned).
+`summary-strip.js` stays deleted; `.dashboard__kpis` CSS removed. The
+Safe-to-Spend value is still `getSafeToSpend(state).safeToSpendCents`
+verbatim — no rename, no new calc; every figure is an existing selector.
+`npm run build` + 527 tests pass; smoke-tested grid structure (3 + 2
+cells), hero wired to `getSafeToSpend`, stat cards wired, the 12-month
+grouped chart with real receipts/expenses, and the mini-table columns;
+eyeballed the 560×280 chart SVG for label collisions / overflow (none).
+`docs/ARCHITECTURE.md` updated to match.
+
+**Two follow-up dashboard tweaks, at the user's request — layout/CSS
+only, no data logic, no schema change, 527 tests still pass.**
+- **The Income-vs-Expenses chart moved into the top region** to fill the
+  empty space beneath Total Expenses / Total Savings, instead of being
+  its own full-width row below. It's now the 4th child of
+  `.dashboard__top`; at `>=1024px` `src/styles/responsive.css` places
+  Safe-to-Spend in column 1 spanning both rows, the two stat cards
+  top-right, and the chart across columns 2–3 on row 2; at `>=600px`
+  Safe-to-Spend and the chart each span the full width with the stat
+  cards paired between them; mobile stacks all four. Its series colours
+  changed from `--color-accent` / `--color-status-caution-text` to two
+  new dedicated tokens, `--color-chart-income` (teal) and
+  `--color-chart-expense` (coral) in `src/styles/base.css` — a distinct
+  dataviz series pair (the `dataviz` skill treats income/expense as two
+  categorical series), light `#0f9b9b`/`#d4663f` and dark
+  `#1f9d9d`/`#d67854`, each run through the skill's `validate_palette.js`
+  (all checks pass, both themes — chroma, CVD ΔE, contrast); the chart
+  already ships a legend so identity is never colour-alone.
+- **Income / expense / debt log entries now render as individual cards**
+  — a hairline `--color-border`, `--shadow-sm` (the existing soft, low-
+  opacity token — not a hard drop shadow), `--radius-md`, `--space-4`
+  padding, `--space-3` gap between them — instead of divider-separated
+  rows. Done with a `.money-list--cards` modifier on the `<ul>`
+  (`src/ui/screens/income-view.js`, `src/ui/components/expenses-section.js`
+  non-compact list, `src/ui/components/debts-section.js`'s "All debts"
+  popup) plus the matching treatment applied directly to `.debt-row`
+  (the Debts view's own list uses its own markup, not `.money-item`).
+  Container styling only — every row's existing content (amount,
+  category, date, actions) is unchanged. Deliberately scoped to these
+  three logs; Bills / Categories / Inbox lists (also `.money-item`) keep
+  their divider-row style. `docs/ARCHITECTURE.md` dashboard/charts lines
+  updated in the same change.
+
+**Dashboard top restructured into two rows, at the user's request —
+again layout/CSS only, no data logic, no schema change, 527 tests still
+pass.** The Safe-to-Spend hero used to sit in the top grid as a tall
+left card spanning two rows, with the chart to its right — which left
+dead space under the hero once its content ended.
+- **A third stat card, "Total debt to pay"** (`getTotalDebtCents` — the
+  already-existing selector summing every debt's `currentBalanceCents`),
+  built with the same `renderStatCard` as Total Expenses / Total Savings
+  (same icon treatment, no delta chip — like Savings). The dashboard now
+  imports `getTotalDebtCents` from `src/modules/debts/index.js`.
+- **New layout**: `src/ui/screens/dashboard.js` builds three row
+  wrappers — `.dashboard__top` (the three stat cards, `repeat(3, 1fr)`
+  at `>=600px`), `.dashboard__mid` (the Safe-to-Spend hero + the
+  Income-vs-Expenses chart, `1fr 1.4fr` side by side at `>=1024px`,
+  stacked full-width below), `.dashboard__bottom` (unchanged: Budget |
+  Recent Expenses). The old explicit `grid-row`/`grid-column` placement
+  of the hero + 4 children in `.dashboard__top` is gone.
+- **No dead space in `.dashboard__mid`**: it's `align-items: stretch`,
+  so the chart's taller natural height drives the row and the hero
+  stretches to match; `.hero__cta { margin-top: auto }` (was
+  `var(--space-2)`) pins the "+ Add expense" button and the disclaimer
+  to the bottom of the hero card instead of leaving them floating
+  mid-card. With no free space (mobile / stacked) `auto` collapses to 0
+  and the flex `gap` still separates them.
+- `docs/ARCHITECTURE.md`'s dashboard + stat-card.js lines updated in the
+  same change.
+
+**Income / Expenses / Debts views: dropped the outer container card, at
+the user's request ("i don't want a global card that holds all the
+cards, just cards") — layout/CSS only, no data logic, 527 tests still
+pass.** Those three views used to render their entry cards
+(`money-list--cards` rows / `.debt-row`) inside a wrapping
+`<section class="card">` with its own section heading — a card holding
+cards. Now the entries sit directly on the page in a bare `.view-stack`:
+- `src/ui/screens/income-view.js` — no wrapper `section.card`, and the
+  redundant "Your income" `sectionHeading` removed (the view header's
+  `<h1>Income</h1>` already names the page); `sectionHeading` import
+  dropped.
+- `src/ui/components/expenses-section.js` — the **non-compact** return
+  (Expenses view only) is now `el('div', { class: 'view-stack' },
+  [total, list])`, no card, no "Expenses" heading. The `compact`
+  (dashboard preview) path is unchanged — still a `.card` with its
+  heading + "View all →".
+- `src/ui/components/debts-section.js` — split the return by mode: the
+  `compact` path still returns the `.card` (API kept even though the
+  dashboard no longer renders it); the **non-compact** path is a
+  `.view-stack` with the "Manage debts" link in a new trailing-aligned
+  `.view-actions` row (its only home now that there's no card header),
+  then the bare `.debt-list`, then its popups. "Debt overview" heading
+  dropped.
+- New `.view-actions` util in `src/styles/components.css` (flex,
+  `justify-content: flex-end`), right after `.view-stack`.
+- Not touched in that pass: Bills view and Categories view.
+  `docs/ARCHITECTURE.md` screens/components lines updated in the same
+  change.
+
+**Then the same for the Bills view, at the user's request ("do the same
+for bills").** `src/ui/components/bills-due-soon.js`'s return is now
+split by mode like `debts-section.js`: `compact` (dashboard summary)
+still returns the amber `.card.card--quiet.bills-due-soon` with its
+heading + "View all bills →"; the **non-compact** Bills view returns a
+`.view-stack` — a `.view-actions` row holding the "Manage bills" link,
+then the glance list with a new `.bills-due-soon__list--cards` modifier
+(each `.bills-due-soon__row` becomes a `--color-surface` /
+`--color-border` / `--shadow-sm` / `--radius-md` card, overriding the
+amber hairline-divider rule), then the "Manage bills" popup. The "Bills
+due soon" heading and the amber `.bills-due-soon` card tint are gone on
+that view (the tint was a whole-card status treatment; individual
+surface cards match Income / Expenses / Debts). The capped-at-4
+glance-list behaviour and the full CRUD living in the "Manage bills"
+popup are unchanged — not in scope. Categories view still untouched
+(divider rows, its own "Edit categories" popup).
+
+**Debts view gained a "Still owed" summary card, at the user's request
+("add a card on the debt view to give [a] global number") — layout only,
+no data logic, 527 tests still pass.** `src/ui/components/stat-card.js`
+gained an optional `note` param (a plain supporting line under the
+value, used instead of a `delta` chip). `renderDebtsSection`'s
+non-`compact` return now leads with `renderStillOwedCard(state)` — a
+`renderStatCard({ icon: 'credit-card', label: 'Still owed', value:
+formatCents(getTotalDebtCents(state)), note })`, where `note` is "Across
+N debt(s)" when anything is owed or "Nothing owed here — add one only if
+you want a payoff plan." when not. When there are no debts the card's
+own note is the empty state, so the debt list's "No debts tracked yet…"
+placeholder is dropped (`debts.length > 0 ? body : null`) to avoid two
+empty messages. `getTotalDebtCents` (already existed — sums every debt's
+`currentBalanceCents`) is now also imported by `debts-section.js`; the
+paid-off count uses the already-imported `getDebtProgress`. New
+`.stat-card__note` rule in `src/styles/components.css`.
+`docs/ARCHITECTURE.md` stat-card / debts-section lines updated in the
+same change.
+
+**Every money view now leads with a tinted summary card, at the user's
+request ("do the same for all money tabs, but … different colours than
+white") — layout only, no data logic, 527 tests still pass.** Extends
+the Debts "Still owed" card from the previous change to all four:
+- `src/ui/components/stat-card.js` gained a `tone` param
+  ('neutral'|'positive'|'caution'|'attention'); non-neutral adds a
+  `.stat-card--<tone>` class that fills the card with the matching
+  `--color-status-*-bg` and drops the border (same treatment
+  `.upcoming-income` / `.bills-due-soon` already use), and derives the
+  icon colour from `--color-status-<tone>-text` unless `iconColor` is
+  passed. New `.stat-card--*` rules + a `.view-stack > .card {
+  margin-bottom: 0 }` rule (so the card + list spacing is the stack's
+  `gap` alone, not doubled) in `src/styles/components.css`.
+- **Income** (`src/ui/screens/income-view.js`, new
+  `renderIncomeSummaryCard`) — "Received this month", `tone: 'positive'`
+  (teal): sum of `IncomeReceipts` dated in the current calendar month
+  (`getIncomeReceiptsForPeriod` + `getIncomeReceiptsTotalCents`), note =
+  payment count / a "mark income received when it lands" hint / an "add
+  one" hint.
+- **Expenses** (`src/ui/components/expenses-section.js` non-compact, new
+  `summaryCard`) — "Spent · <selected period label>", `tone: 'caution'`
+  (amber): `getExpensesTotalCents(allForPeriod)` for the header bar's
+  period (`getPeriodLabel` now imported from `period-selector.js`), note
+  = expense count. **Replaced** the old plain `.expenses-filter__total`
+  "Total: …" line on that view (the class stays — still used by the
+  compact/dashboard path).
+- **Bills** (`src/ui/components/bills-due-soon.js` non-compact, new
+  `renderUnpaidBillsCard`) — "Unpaid bills", `tone: 'attention'` (red):
+  `getUpcomingBillsTotalCents` + a count of active unpaid bills.
+- **Debts** (`src/ui/components/debts-section.js`) — the existing
+  `renderStillOwedCard` just gained `tone: 'attention'`.
+- Colour split: Income teal (money in), Expenses amber (money out this
+  period), Bills + Debts red (what you owe). `docs/ARCHITECTURE.md`
+  stat-card line updated in the same change.
+
+**Summary cards lifted + every money record made edit/delete-consistent
+with Income, at the user's request ("make the card look more live with a
+shadow" + "for the record of bill, debt, expenses … make them look like
+income — a pen to edit, and trash to delete"). Layout only, 527 tests
+still pass.**
+- **Shadow**: the tinted `.stat-card--positive/caution/attention`
+  summary cards now carry `box-shadow: var(--shadow-md)` (was inheriting
+  the plain `.card` `--shadow-sm`), so each tab's headline number visibly
+  lifts.
+- **Expenses rows** (`src/ui/components/expenses-section.js` non-compact):
+  the two `btn btn--secondary btn--small` "Edit" / "Delete" text buttons
+  → a pencil + trash `iconButton` pair (`tone: 'attention'` on trash),
+  matching `incomeViewRow`.
+- **Bills view** (`src/ui/components/bills-due-soon.js`): the non-compact
+  Bills view no longer shows the capped "due soon" glance list + a
+  "Manage bills" popup — it now renders **every** bill (unpaid & soonest-
+  due first, `billSortOrder`) as a `manageBillRow` in a
+  `money-list--cards`: Mark paid/unpaid + pencil (inline edit) + trash,
+  exactly the Income shape. `renderManageBillsPopup` / `billsManageOpen`
+  / the `renderPopup` import / the dead `.bills-due-soon__list--cards`
+  CSS are deleted. The `compact` branch (glance list + debt-payment
+  rows + "View all bills →", currently unrendered — nothing imports
+  bills-due-soon.js in compact mode) is untouched. **Consequence worth
+  noting**: the "a debt's minimum payment shows as a row in the bills
+  list" integration (docs/PRODUCT.md §8) now only exists in that unused
+  compact branch — the Bills view is bills-only; debts are managed on
+  the Debts view.
+- **Debts view** (`src/ui/components/debts-section.js`): each `.debt-row`
+  (non-compact) gained a pencil (inline `renderDebtForm`) + trash beside
+  its "Make payment" button; `.debt-row__actions` became a
+  `flex/wrap/gap` row. `manageDebtRow` / `renderManageDebtsPopup` /
+  `debtsManageOpen` and the "Manage debts" `.view-actions` link are
+  deleted — editing/deleting is inline per row now.
+- All four views are now structurally identical: tinted summary card →
+  `.view-stack` of record cards, each with a primary toggle + pencil +
+  trash. `docs/ARCHITECTURE.md` updated in the same change.
+
+**"+ Add expense" moved off the Safe-to-Spend hero card to the top of
+the dashboard, at the user's request. Layout only, 527 tests still
+pass.** `src/ui/components/safe-to-spend-hero.js` is now pure display —
+the `.hero__cta` button, its popup, the `expenseFormOpen` flag, and the
+`renderExpenseForm` / `renderPopup` / `createExpenseAction` imports are
+gone; `renderSafeToSpendHero(result)` takes no options now (was
+`(result, { state, dispatch, requestRender })`). `src/ui/screens/
+dashboard.js` owns the button + popup instead, passing it as
+`renderAppFrame`'s `titleAction` (top-right of the greeting, same
+pattern as the Income/Expenses/Bills/Debts views' "+ Add X") with a
+module-level `dashboardAddExpenseOpen` flag (the name is prefixed —
+`expenses-view.js` already has `addExpenseOpen`, and the bundler shares
+one scope; caught by `build.test.js`). CSS: `.hero__cta` / `.hero__cta
+.btn` rules deleted; the `margin-top: auto` bottom-pin moved from
+`.hero__cta` to `.hero__disclaimer` (now the hero's last child) so the
+disclaimer still sits at the card's bottom in the `.dashboard__mid`
+matched-height layout. `docs/ARCHITECTURE.md` dashboard line updated.
+
+**Fixed: the global period filter's label was stuck on "This month" on
+the Expenses view.** Reported as "the filter is not working across the
+whole app". Root cause: `src/ui/components/expenses-section.js` called
+`getPeriodLabel(period.period)` — passing the bare period *string* where
+`getPeriodLabel` reads `value?.period` off an *object*, so it always hit
+the `?? 'This month'` fallback. The underlying data *was* filtering
+correctly (list rows + the "Spent" total both tracked the selected
+period); only the card's title didn't move, which read as "nothing is
+filtering". Fixed the call site to pass the whole `period` object, and
+hardened `getPeriodLabel` to accept either the `{period, from, to}`
+object *or* a bare string. Verified across `week`/`month`/`lastMonth`/
+`all`: Expenses view (label + value + row count) and Budget view (Money
+in/out + heading) both track the filter, as does the Dashboard's Recent
+Expenses table. The Income / Bills / Debts summary cards are
+deliberately *not* period-scoped — "Received this month", "Unpaid
+bills", "Still owed" are current snapshots, not time-window lenses.
+
+**The global period filter now drives the summary cards on Income,
+Bills and the Dashboard too (it already drove Expenses + Budget), at the
+user's request.** Each is now derived from that tab's real dated log,
+range-resolved via `resolvePeriodRange(getSelectedPeriod())`:
+- **Dashboard** "Total expenses" stat card
+  (`src/ui/screens/dashboard.js`): was hard-wired to the current
+  calendar month (`getExpensesMonthOverMonth`); now
+  `getExpensesTotalCents(getExpensesForPeriod(…, selected period))`,
+  label `Total expenses · <period>`. The month-over-month delta chip is
+  kept only when the period is "This month" (it compares this vs. last
+  calendar month — meaningless for other ranges). "Total savings" /
+  "Total debt to pay" stay current-state totals.
+- **Income view** (`renderIncomeSummaryCard`): was "Received this month"
+  hard-wired to the calendar month; now "Received · <period>" from
+  `getIncomeReceiptsForPeriod` over the selected range.
+- **Bills view** (`renderUnpaidBillsCard` → renamed
+  `renderBillsSummaryCard`): was "Unpaid bills" (a current total); now
+  "Bills paid · <period>" from `getBillPaymentsForPeriod`, with the
+  still-outstanding total (`getUpcomingBillsTotalCents`) kept visible as
+  the card's note. This makes Income/Expenses/Bills a consistent set —
+  each = real logged money movement (`IncomeReceipt` / `Expense` /
+  `BillPayment`) through that category during the window.
+- **Not period-scoped, by design**: the Income and Bills *lists*
+  themselves (an income/bill is a forward-looking schedule, not a dated
+  event, so "incomes in June" isn't well-defined) and the Debts "Still
+  owed" card (an outstanding balance has no time dimension). The
+  Dashboard's Income-vs-Expenses chart stays a fixed 12-month calendar-
+  year trend.
+- Verified across week/month/lastMonth/all that every one of the four
+  cards' label + value + note track the selection. `docs/ARCHITECTURE.md`
+  stat-card line updated.
+
+**The "Budget" tab was reworked into a "Goals" tab (savings goals), at
+the user's explicit and detailed request — schemaVersion bumped 9 → 10.**
+Two conflicts were flagged and resolved via `AskUserQuestion` before any
+code: (1) `docs/PRODUCT.md` §5 / this file's own scope list literally say
+"no goals module" (from the retired ADHD Life Planner) — the user
+confirmed these are *savings* goals, a budgeting concept, and the docs
+were updated to carve that out (scope line above, `docs/PRODUCT.md`
+§4 item 17 / §5); (2) how goals affect Safe-to-Spend — the user chose
+**protected, like Savings** (not informational like Debts/Categories).
+- **New `src/modules/goals/`** (`actions`/`reducer`/`selectors`/`index`,
+  standard list-entity shape via `src/core/list-entity.js`). `Goal` =
+  `{ id: 'g…', name, targetCents, savedCents, monthlyPaceCents|null,
+  createdAt, updatedAt }`. `getGoalProgress` derives percent / remaining
+  / `isReached` / `monthsToGo` (`ceil(remaining / pace)`);
+  `getTotalGoalsSavedCents` is the protected sum. Plain generic routing
+  in `src/main.js`'s `SLICE_REDUCERS` — **no** cross-slice effect:
+  creating a goal never debits Current Balance.
+- **Schema v9 → v10** (`migrateV9ToV10` — purely additive `goals: []`;
+  added to `ARRAY_COLLECTION_KEYS` + `createEmptyState`). `docs/DATA-MODEL.md`
+  ("Goal" entity, root shape, §7). The pre-pivot v2 shape also had a
+  `goals` key (life-planning) — v2→v3 still discards that; v9→v10
+  re-adds `goals` as the unrelated savings collection. `schema.test.js`'s
+  v2→v3 assertion updated to expect `goals: []` (old contents dropped,
+  new empty collection present).
+- **Safe-to-Spend formula changed**: `sumGoalsSaved(state.goals)` (raw
+  read, no import from `src/modules/goals/`, per-item
+  `isValidAmountCents` guard) is a new `goalsSavedCents` term folded into
+  `totalCommittedCents = plannedExpensesCents + savingsAllocationCents +
+  goalsSavedCents`, and returned on the result. `docs/SAFE-TO-SPEND.md`
+  §2 / new §3d / §11b / §13 updated. `tests/unit/safe-to-spend.test.js`
+  §4b added (subtracted once, stacks with Savings, survives a corrupted
+  entry). Savings + Goals are two separate buckets — double-counting if
+  the user enters the same dollars in both is their call, explicitly
+  accepted.
+- **`#budget` route → `#goals`** (`src/ui/router.js` `APP_VIEWS`; a
+  `budget → goals` alias so old bookmarks resolve). `src/ui/shell.js`
+  `VIEW_RENDERERS`. Sidebar item `{ id:'goals', label:'Goals',
+  iconName:'target' }`.
+- **New `src/ui/screens/goals-view.js`** (replaces `budget-view.js`,
+  deleted). Self-contained like `income-view.js`: `renderGoalForm`
+  (Name / Amount needed / Already put away / Pace — buttons "Add this
+  goal" + "Cancel", per the spec), a `.goal-list` of `.goal-row` cards
+  (same card treatment as `.debt-row`: border, `--shadow-sm`,
+  `--radius-md`), each with name, an 8px pill progress bar (hero-styled
+  fill on the `--progress-track` token), "$X of $Y", the pace line,
+  "Reached 🎉" state, and a pencil (inline edit) + trash — exactly the
+  Debts-view row shape. "+ Add a goal" is the view-header `titleAction`.
+- **Current Balance + Savings moved to a compact sidebar footer card**
+  (`renderSidebarFooter` in `src/ui/components/sidebar.js`): two rows
+  ("Current balance $X ✏️", "Savings $Y ✏️"), pushed to the bottom of
+  the rail (`margin-top: auto`), hidden on the collapsed icon rail. The
+  pencils open a small `renderEditTotalForm` popup (Current Balance:
+  `parseBalanceToCents`, negative allowed; Savings: direct set-total).
+  `renderSidebar` now takes `state`/`dispatch`/`requestRender` and
+  returns `{ nav, scrim, editPopup }` — the popup is returned separately
+  (not nested in `<nav>`, which is `transform`ed on the mobile drawer and
+  would clip a `position: fixed` backdrop); `app-frame.js` places it at
+  the screen root. **Trade-off flagged**: Savings' earlier *additive*
+  "+Add contribution" flow is gone with the Budget view — the sidebar
+  pencil is a direct set-total only (keeps it compact). Easy to restore
+  if wanted. (Footer card restyled right after, per a screenshot: a
+  tinted `--color-accent-muted` panel instead of a plain bordered one,
+  each figure now label-above / amount-below via `.sidebar__stat` +
+  `.sidebar__stat-line`, and the edit pencil is a small borderless
+  `.sidebar__stat-edit` (24px) rather than the full 44px `.icon-btn`.)
+- **Removed as now-unused**: `src/ui/screens/budget-view.js`,
+  `src/ui/components/right-now-section.js` (the "Money in / Money out
+  this period" card + Safe-to-Spend line the Budget tab showed — the user
+  chose to drop these from the Goals tab; that period info is already on
+  the Income "Received" / Expenses "Spent" cards, and the Safe-to-Spend
+  number is on the dashboard), and the `.right-now*` CSS. `renderEditTotalForm`
+  (same file as the also-now-unused `renderSingleValueSection`) is kept —
+  the sidebar uses it.
+- 546/546 tests pass (19 new: `goals.test.js`, the `schema.test.js`
+  v9→v10 block, `safe-to-spend.test.js` §4b). Build passes.
+  `docs/ARCHITECTURE.md` (module tree, screens, sidebar) updated.
+
+**The Safe-to-Spend hero gained a "How is this worked out?" disclosure,
+at the user's request.** `src/ui/components/safe-to-spend-hero.js`'s new
+`renderBreakdown(result)` — a native collapsed `<details>` under the
+committed-vs-available bar — lists Current balance, then each committed
+term that's `> 0` (Planned expenses / Savings / Savings goals, each with
+a leading "−"), a divider, and "Estimated safe to spend" (the result).
+Just the numbers that go into the calc — no explanatory prose (an
+earlier draft's "unpaid bills aren't counted" note was removed at the
+user's request). **Every figure is read straight off `getSafeToSpend`'s
+result** (`currentBalanceCents`, `plannedExpensesCents`,
+`savingsAllocationCents`, `goalsSavedCents`, `safeToSpendCents`) — the
+"−" is a label, no arithmetic in `src/ui/`
+(CLAUDE.md's "the hero never recomputes the math" rule holds). Native
+`<details>` (no JS/state) — its open state resets only when the hero
+re-renders from a store change, which is fine for a read-only panel.
+New `.hero__breakdown*` CSS. 546/546 tests pass (display-only, no logic
+touched).
+
+**The Safe-to-Spend hero was reframed around "make this last until the
+next paycheck", and unpaid bills due before payday are subtracted again
+— a formula change plus a display rework, at the user's explicit request.
+Three conflicts with prior decisions were flagged via `AskUserQuestion`
+first.**
+- **Bills back in the formula (reverses an earlier documented
+  decision).** For a stretch (the entries between Debt Tracking and
+  Goals above) unpaid bills were display-only — `upcomingBillsCents`
+  computed but excluded from `safeToSpendCents`, so a bill only moved the
+  number via the "Mark paid" balance debit. The user asked for the
+  opposite; confirmed via `AskUserQuestion`. Now
+  `totalCommittedCents = upcomingBillsCents + plannedExpensesCents +
+  savingsAllocationCents + goalsSavedCents` in
+  `src/modules/safe-to-spend/calculation.js`. "Mark paid" still debits
+  Current Balance and drops the bill from `upcomingBillsCents` → the
+  amount moves from committed to already-spent, **net zero on
+  Safe-to-Spend** (this is the original pre-exclusion behaviour). `docs/
+  SAFE-TO-SPEND.md` §2 (rewritten, with a history note), §7 (rewritten —
+  no longer a "superseded design" section), §11b, §12, §13; `docs/
+  PRODUCT.md` §6 (illustrative example redrawn to $750 with bills
+  subtracted); `docs/DATA-MODEL.md` §3a; `src/modules/bills/
+  balance-effect.js` header — all updated. **~16 tests rewritten** across
+  `safe-to-spend.test.js`, `dashboard-integration.test.js`,
+  `qa-user-flows.test.js` (the same set that was rewritten the *other*
+  way when bills were first excluded — this reverts those). 546/546 pass.
+- **Total cushion, not a daily allowance** (the user's other flagged
+  choice). The headline stays `safeToSpendCents` — the full amount that
+  has to stretch to the next payday; it doesn't tick down per day.
+  `daysUntilPayday` / `dailyAllowanceCents` are still computed, unused by
+  the hero.
+- **Label: "Estimated safe to spend" → "Safe to spend today"** (the user
+  picked this over "Estimated safe to spend today"). `SAFE_TO_SPEND_LABEL`
+  in `src/modules/safe-to-spend/wording.js`. The "planning estimate, not
+  a verified bank figure" framing moved from the label into the new
+  subtext + the unchanged `PLANNING_DISCLAIMER`. `docs/SAFE-TO-SPEND.md`
+  §12 updated. `SAFE_TO_SPEND_LABEL` is also the breakdown's total-row
+  label, so that updated too.
+- **New subtext line** under the amount (`src/ui/components/
+  safe-to-spend-hero.js`, copy in `wording.js`'s `getSafeToSpendSubtext`):
+  *"of today's starting $X · $X has to last until Mon 31 Aug"* — both
+  blanks are `safeToSpendCents` (the cushion doesn't decrease per day, so
+  "today's starting" === the headline). Payday date from
+  `result.nextPaydayDate` via new `formatShortWeekdayDate` in
+  `src/core/date.js` (pinned `en-GB`, "Mon 31 Aug"). No payday set → "of
+  today's starting $X — add an income date to see how long this needs to
+  last".
+- **Explanatory paragraph** reworded for payday framing (new
+  `SAFE_TO_SPEND_POSITIVE_DESCRIPTION`; the negative/zero
+  `getSafeToSpendMessage` copy too).
+- **"How is this worked out?" breakdown** (from the previous change)
+  gained a "Bills due before payday −$X" row now that bills are a
+  committed term.
+- **"+ Add expense" stays at the top of the dashboard** (view-header
+  `titleAction`), where the user moved it a few messages ago —
+  "keep… same placement as before" read as "don't move it again", not
+  "put it back on the card".
+- New `.hero__subtext` CSS. Kept: icon, disclaimer, progress bar,
+  placement of everything.
+
+**Two small follow-ups, at the user's request — layout/CSS only, 549
+tests still pass.**
+- **Sidebar footer card icons**: the Current Balance and Savings rows in
+  `renderSidebarFooter` (`src/ui/components/sidebar.js`) each got a small
+  13px icon (wallet / target) beside the label; `.sidebar__stat-label`
+  became a flex row for the icon + text.
+- **Categories view: one card per category.** `category-budgets-section.js`
+  non-`compact` now matches the Bills / Debts / Goals views — no outer
+  container card, each category is its own `.category-row` card
+  (`.category-list--cards` CSS: border, `--shadow-sm`, `--radius-md`,
+  padding) with a pencil (inline edit via `editingId` — the existing
+  `renderCategoryBudgetForm`, now exported) + trash. `categories-view.js`
+  owns a "+ Add category" view-header `titleAction` opening that form in
+  a popup; the old "Edit categories" popup / `renderManagePopup` /
+  `manageOpen` are deleted. The `compact` dashboard "Budget progress"
+  card is untouched (one `.card`, plain `.category-list`, read-only).
+  `docs/ARCHITECTURE.md` updated.
+- **Then, per request, the per-card edit/delete buttons moved to the top
+  line** on Categories, Goals, and Debts (were stacked at the bottom
+  under the progress bar). Each `.category-row` / `.goal-row` /
+  `.debt-row` is now a flex row `[.<x>-row__body (flex:1 column) |
+  .<x>-row__actions (edit + trash, `flex-shrink: 0`, top-aligned)]`; a
+  `.<x>-row--editing { display: block }` modifier keeps the inline edit
+  form filling the card. Debts' "Make payment" button stays inside the
+  body (bottom of the content column, `.debt-row__pay`) — only the
+  edit/trash icons moved.
+
+**Every per-record edit pencil now opens a popup instead of expanding an
+inline form, at the user's request — 549 tests still pass.** Income /
+Expenses / Bills / Debts / Goals / Categories: the row renderers lost
+their `if (id === editing<X>Id) return <inline form>` branch; the
+view/section now builds an `editPopup` (`renderPopup` + the same shared
+`render<X>Form`, `onCancel`/`onClose` = clear the flag) keyed off
+`records.find(editing<X>Id)`, appended to the returned tree — the exact
+pattern the "+ Add X" popups and the sidebar balance/savings pencils
+already used. `renderPopup` re-imported into `expenses-section.js` /
+`bills-due-soon.js` / `category-budgets-section.js` (it had been removed
+when their "Manage …" popups went away). Dead `.money-item--editing` /
+`.debt-row--editing` / `.goal-row--editing` CSS removed.
+
+**Settings-view polish from screenshots — CSS + one component tweak, 549
+tests still pass.**
+- **Form `<select>`s got more space**: `select.field__input` now has
+  `min-height: calc(--tap-target-min + --space-2)` (~52px) and
+  `padding-block: --space-3` — roomier than a text input. Affects the
+  Settings currency picker and every form select (debt/income/bill
+  frequency & recurrence), consistently.
+- **"Your name" card**: the bold `Display name` field label is gone,
+  replaced by a `.section-description` comment ("Optional — shown in the
+  dashboard greeting, …"), matching the Theme / Currency cards' pattern
+  (`src/ui/screens/settings-view.js` `nameSection` — the input is now a
+  bare `.money-form` child, no `.field` wrapper). The divider line above
+  it (`.money-form`'s `border-top`, which separates a form from a modal
+  header elsewhere) is removed in Settings via `.settings-view
+  .money-form { padding-top: 0; border-top: 0 }`.
+- **Onboarding spacing (from a screenshot)**: `select.field__input` also
+  got `padding-inline: --space-4` (was `--space-3`) so a select's value
+  isn't jammed against the border / native arrow (the payday step's "How
+  often"). And `.screen--onboarding > .card > .btn:last-child` /
+  `.link-button:last-child` get `margin-top: --space-4` — on the payday /
+  bills steps "Continue" is a bare button rendered as a card sibling
+  right after the add-form and was sitting almost flush against the
+  form's own "Add another …" button.
+
+**Two Safe-to-Spend reverts, at the user's direct request — 549 tests
+still pass.**
+- **Unpaid bills no longer reduce Safe-to-Spend** (again). Reverts the
+  "bills back in the formula" change from a few messages ago.
+  `totalCommittedCents = plannedExpensesCents + savingsAllocationCents +
+  goalsSavedCents` — `upcomingBillsCents` is display-only once more. A
+  bill only moves the number via the "Mark paid" Current Balance debit
+  (`src/modules/bills/balance-effect.js` — now "the only way", again).
+  Symmetric with Income. **~14 tests** across `safe-to-spend.test.js` /
+  `dashboard-integration.test.js` / `qa-user-flows.test.js` flipped back
+  (the same set that has now been flipped three times — bills in → out →
+  in → out). The hero's "How is this worked out?" breakdown lost its
+  "Bills due before payday" row; `wording.js` copy
+  (`getSafeToSpendMessage`, `SAFE_TO_SPEND_POSITIVE_DESCRIPTION`) dropped
+  its "bills" mentions. The payday-based label/subtext ("Safe to spend
+  today", "$X has to last until Mon 31 Aug") **stays** — it just doesn't
+  imply unpaid bills are subtracted. `docs/SAFE-TO-SPEND.md` §2/§7/§11b/
+  §13, `docs/PRODUCT.md` §6 (example back to $1,950, bills shown "for
+  awareness"), `docs/DATA-MODEL.md` §3a all updated.
+- **Onboarding no longer folds savings into Current Balance.**
+  `renderBasicsStep` (`src/ui/screens/onboarding.js`) now stores
+  `enteredBalance` and `enteredSavings` as-is — dropped the
+  `balanceCents + savingsCents` sum that existed so Safe-to-Spend netted
+  back to the entered balance. Current Balance is now just the account
+  figure everywhere, savings a separate protected term. Hint copy +
+  `docs/DATA-MODEL.md` §3a's onboarding-exception paragraph updated (it's
+  no longer an exception).
+
+**Safe-to-Spend is now floored at $0, at the user's direct request ("set
+the floor to 0") — 550 tests pass.** Reported from a screenshot showing a
+`-$10,000.00` headline (balance $1,000, committed $11,000). This reverses
+`docs/SAFE-TO-SPEND.md` §10's prior "the engine does not clamp it to
+zero" decision.
+- `src/modules/safe-to-spend/calculation.js`: `netAfterCommittedCents =
+  currentBalanceCents − totalCommittedCents` (raw, can be negative) is a
+  new returned field; `safeToSpendCents = Math.max(0,
+  netAfterCommittedCents)` — never negative. `dailyAllowanceCents`
+  derives from the floored value, so it's now always `>= 0` (was
+  documented "can be negative"). `isNegative` **redefined**:
+  `netAfterCommittedCents < 0` (i.e. "over-committed / the result was
+  floored") instead of `safeToSpendCents < 0`. The hero keys its
+  attention styling (`$0.00` in the warning colour, `--negative` progress
+  track) off `isNegative`, so no hero style change was needed.
+- `src/modules/safe-to-spend/wording.js`: `getSafeToSpendMessage` reads
+  `netAfterCommittedCents` (not `safeToSpendCents`) for the
+  over-committed branch + its overage amount. `getSafeToSpendSubtext`
+  reworded to "`$X of your $Y balance has to last until Mon 31 Aug`",
+  where `$Y` is the **raw current balance** — this is the "don't reduce
+  the saving from the current balance" ask from the same thread: the
+  balance named in the subtext is never itself netted down (it used to
+  show `safeToSpendCents` in that slot).
+- `src/ui/components/safe-to-spend-hero.js`: `renderBreakdown` — when
+  `isNegative`, shows an "After everything committed −$10,000.00" sub-row
+  (so the listed subtractions still add up) then a "Shown as (never below
+  $0) $0.00" total row; the normal case is unchanged (single "Safe to
+  spend today" total row).
+- Docs updated in the same change: `docs/SAFE-TO-SPEND.md` §2 (formula
+  block now shows `max(0, netAfterCommitted)`), §10 (rewritten — floor +
+  the `netAfterCommittedCents`/`isNegative`/message mechanism, with the
+  reversal noted), §11 (`dailyAllowanceCents` always `>= 0`), §12
+  (subtext copy), §13 (result object — `netAfterCommittedCents` added,
+  `safeToSpendCents`/`dailyAllowanceCents`/`isNegative` redescribed);
+  `docs/PRODUCT.md` §6 (a "never shows below $0" paragraph).
+- Tests: `safe-to-spend.test.js` §12 retitled "over-committed
+  Safe-to-Spend (floored at 0)" — asserts `safeToSpendCents: 0` +
+  `netAfterCommittedCents: -40000` + `isNegative: true`, plus a new
+  "daily allowance never negative" case; §14 decimal test now checks
+  `netAfterCommittedCents: -10`. `expenses-persistence.test.js`'s
+  "expense larger than balance" test asserts `safeToSpendCents: 0` +
+  `netAfterCommittedCents: -4000` (the *balance* itself, `-4000`, is
+  still not clamped — that's the test's actual point). 549 → 550 tests.
+
+**The flat Savings figure no longer reduces Safe-to-Spend — it's a
+separate-account balance now, and "Add to savings" is a real transfer
+that debits Current Balance. At the user's explicit request, confirmed
+via `AskUserQuestion`; Goals were deliberately left as a subtraction.
+554 tests pass.** Reverses `docs/PRODUCT.md` §4 item 6 / `docs/SAFE-TO-SPEND.md`
+§2/§3d's long-standing "Savings is money set aside and excluded from
+what's safe to spend" (i.e. subtracted). The user's model: the $12,000
+in a savings account was never inside the $1,000 checking balance, so
+subtracting it (→ deeply negative, then floored to $0 last turn) is
+wrong; only *moving* money into savings should cost anything.
+- **`src/modules/safe-to-spend/calculation.js`**: `totalCommittedCents =
+  plannedExpensesCents + goalsSavedCents` — `savingsAllocationCents`
+  removed. Still returned on the result, now **display-only** (like
+  `upcomingBillsCents`). `goalsSavedCents` stays a subtracted term.
+- **`src/main.js`**: new cross-slice special case — `budget/add-to-savings`
+  now raises `savingsAllocationCents` **and** debits `currentBalanceCents`
+  by the same amount, atomically (the 5th use of the documented
+  cross-slice-balance exception, alongside Expense / Income mark-received
+  / Bill mark-paid / Debt payment). `budget/set` (correcting either
+  figure, used by onboarding + the sidebar pencil) has **no** balance
+  effect — falls through to generic routing unchanged. `budgetReducer`
+  itself is untouched.
+- **UI**: `src/ui/components/sidebar.js`'s footer Savings row gained a
+  "+" `iconBtn` ("Add to savings") next to the existing edit pencil;
+  `renderSidebarEditPopup` handles a new `sidebarEditTarget` value
+  `'savings-add'` — a popup using `renderEditTotalForm` with two new
+  optional params (`submitLabel`, `startEmpty`) added to that helper so
+  the field starts blank and the button reads "Add". New `plus` glyph in
+  `icons.js`. Onboarding basics-step hint reworded ("separate savings
+  account… won't be subtracted from your safe-to-spend").
+- **`src/modules/safe-to-spend/wording.js`**: over-committed / zero
+  messages dropped "savings" (now "planned expenses and savings goals");
+  `SAFE_TO_SPEND_POSITIVE_DESCRIPTION` likewise. The hero breakdown
+  (`safe-to-spend-hero.js` `renderBreakdown`) no longer lists a "Savings"
+  −row.
+- **Docs**: `docs/SAFE-TO-SPEND.md` §2 (Savings dropped from the formula
+  + a "separate account" explainer + history), §3d (goals ≠ savings now),
+  §9 (rewritten — "a separate-account balance, not a subtraction";
+  set vs. add-to-savings; the transfer's balance debit), §11b, §13
+  (`savingsAllocationCents` display-only); `docs/PRODUCT.md` §3/§4 item 6/
+  §6 (example → $2,150, savings shown as a separate "NOT subtracted"
+  line); `docs/DATA-MODEL.md` Budget entity + §3a (add-to-savings is the
+  4th auto-balance effect; the "Current Balance and Savings are
+  independent inputs" paragraph rewritten — savings is no longer a
+  subtracted bucket); `docs/ARCHITECTURE.md` §6 tree + §7 (now "five
+  times").
+- **Tests**: `safe-to-spend.test.js` §4 retitled "savings figure
+  (display-only — NOT subtracted)" + §4b / §14 / §16a / the PRODUCT.md §6
+  cross-check ($1,950 → $2,150) rewritten; `dashboard-integration.test.js`
+  — "changing savings allocation reduces the result" split into
+  "correcting the figure does NOT" + "addToSavingsAction DOES (debits
+  balance)", "every area combined" expected recomputed; 3 new
+  `main.test.js` rootReducer tests for `budget/add-to-savings` (transfer,
+  vs. `budget/set` no-op, rejected-amount no-op). 551 → 554.
+
+**Hero copy trimmed, "How is this worked out?" expanded, and an
+onboarding debts step added — all at the user's request. 554 tests pass
+(no logic touched — display + onboarding composition only).**
+- **Removed** the standing positive-case sentence
+  (`SAFE_TO_SPEND_POSITIVE_DESCRIPTION`, "This is what's left to last
+  until your next payday…"). `src/modules/safe-to-spend/wording.js` no
+  longer exports it; `index.js` re-export dropped;
+  `safe-to-spend-hero.js` renders the `.hero__description` paragraph only
+  when `getSafeToSpendMessage(result)` is non-null (i.e. the
+  negative/zero cases still get their copy — a positive result now has no
+  paragraph).
+- **Expanded `renderBreakdown`** (`safe-to-spend-hero.js`) to "include
+  everything": the calculation rows now always render (even at $0) —
+  Current balance − Planned expenses − Savings goals = result — followed
+  by a new **"Shown for context — not part of the calculation"** group
+  (new `.hero__breakdown-group` CSS) listing Savings account balance,
+  Bills due before payday, Income due before payday, **Debt owed**, and
+  the Next payday date/countdown. All read off `result` except debt:
+  `renderSafeToSpendHero(result, { totalDebtCents })` gained that second
+  arg, passed `getTotalDebtCents(state)` from `dashboard.js` (an existing
+  selector's output — no arithmetic added to `src/ui/`, CLAUDE.md rule
+  intact). Over-committed still shows the "After everything committed
+  −$X" → "Shown as (never below $0) $0.00" pair.
+  `formatShortWeekdayDate` now imported by the hero.
+- **Onboarding gained a Debts step** (`src/ui/screens/onboarding.js`,
+  new `renderDebtsStep`, 5th step) — a direct structural copy of
+  `renderBillsStep`: reuses the real `renderDebtForm`
+  (`src/ui/components/debts-section.js`), multi-entry with an
+  "added so far" list + a Continue button, entirely optional. New
+  imports: `renderDebtForm`, `createDebtAction`/`getAllDebts`. Copy notes
+  it "doesn't change your Safe-to-Spend" (docs/SAFE-TO-SPEND.md §3c).
+- Docs updated same change: `docs/SAFE-TO-SPEND.md` §12 (positive result
+  = no paragraph; the expanded breakdown described), `docs/PRODUCT.md`
+  §4 item 12 (onboarding step list now includes debts),
+  `docs/ARCHITECTURE.md` (onboarding.js screen description).
+- Verified via DOM-shim smoke test: positive result renders no
+  `.hero__description`; the breakdown shows all 4 calc rows + the 5
+  context rows (incl. "Debt owed — tracked separately, never subtracted
+  here $3,200.00" and "Next payday Tue 1 Sept · 3 days"); over-committed
+  shows the sub-total + floored pair and still keeps its message
+  paragraph. Then discarded per docs/TEST-PLAN.md.
+
+**"How is this worked out?" rewritten to be an exact mirror of the
+calculation, and the "Shown for context" section removed — at the user's
+request. 554 tests pass (display-only; no calculation, action, or
+selector touched).** The user asked for the breakdown to fully explain
+the formula, dynamically from real state, with a single source of truth
+and no double-counting, AND to delete the context section added the
+message before.
+- **Inspected the actual calc first** (`src/modules/safe-to-spend/calculation.js`):
+  `safeToSpendCents = max(0, currentBalanceCents − plannedExpensesCents −
+  goalsSavedCents)`. Those are the ONLY two deductions
+  (`totalCommittedCents = plannedExpensesCents + goalsSavedCents`).
+  Everything the user's example formula listed separately — logged
+  expenses, paid bills, debt payments, savings transfers — has **already
+  reduced `currentBalanceCents`** via the cross-slice balance effects
+  (docs/DATA-MODEL.md §3a); unpaid bills / debt balances / the flat
+  Savings figure / upcoming income are excluded by design (§2/§3/§9).
+- **`src/ui/components/safe-to-spend-hero.js` `renderBreakdown(result)`**
+  (dropped its `totalDebtCents` param — `renderSafeToSpendHero` is back to
+  taking just `result`; `dashboard.js` call reverted; `formatShortWeekdayDate`
+  import removed): now renders a plain-language intro sentence
+  ("Your Safe to Spend is the money left after setting aside everything
+  you've already spent, committed, or chosen to reserve. Anything you've
+  logged as spent, paid on a bill, put toward a debt, or moved into
+  savings has already come out of your current balance.") then exactly
+  three rows — `Current balance` − `Planned expenses` − `Savings goals` =
+  `Safe to spend today` — every figure straight off `result`, both
+  deduction rows shown even at $0. Reconciles to the headline **by
+  construction**. Over-committed still shows "After everything set aside
+  −$X" then the floored "Safe to spend today (never below $0) $0.00".
+- **Removed entirely**: the "Shown for context — not part of the
+  calculation" group and its rows (Savings account balance / unpaid bills
+  / upcoming income / debt owed / next payday). No replacement disclaimer.
+- CSS: `.hero__breakdown-group` → `.hero__breakdown-intro` (small margin,
+  1.5 line-height). No colour/spacing/typography tokens changed.
+- Docs: `docs/SAFE-TO-SPEND.md` §12 breakdown bullet rewritten.
+- Verified via DOM-shim smoke test across 8 scenarios (nothing / expenses
+  only / unpaid bills only / planned+goals / separate savings figure /
+  over-committed / everything at once / add-an-expense): the three rows
+  always reconcile to `netAfterCommittedCents`, the final row always
+  equals `safeToSpendCents`, zero context rows, intro always present;
+  adding a $50 expense drops Current balance $1,000→$950 and STS by
+  exactly $50. Discarded per docs/TEST-PLAN.md.
+
+**"How is this worked out?" now shows this month's spending as visible
+deductions — at the user's request ("I logged an expense but it doesn't
+show"), chosen via `AskUserQuestion` (option: "start from a 'before
+spending' figure"). 557 tests pass. No calculation/action/selector
+behaviour changed — one new composition selector + display.**
+The problem: a logged `Expense` debits `currentBalanceCents` directly
+(Phase 5), so it never appeared as its own line in the breakdown — it
+was silently inside "Current balance". Adding a literal "− Expenses"
+line would double-count and not reconcile.
+- **New `getSafeToSpendBreakdown(state, {now})`** in
+  `src/modules/dashboard/index.js` (the module allowed to compose many
+  selectors — docs/ARCHITECTURE.md §7): returns `getSafeToSpend`'s result
+  **spread** plus a `period` block —
+  `{ balanceBeforeSpendingCents, spentThisMonthCents,
+  billsPaidThisMonthCents, incomeReceivedThisMonthCents, hasActivity }`.
+  This-month sums via `resolvePeriodRange('month')` + the same
+  `getExpensesForPeriod` / `getBillPaymentsForPeriod` /
+  `getIncomeReceiptsForPeriod` logs `getPeriodSummary` already reads.
+  `balanceBeforeSpendingCents` is **defined** as `currentBalanceCents +
+  spent + billsPaid − incomeReceived` so section 1 reconciles by
+  construction; savings transfers / manual balance edits (no dated log)
+  are absorbed into that opening figure. `spentThisMonthCents` is every
+  `Expense` dated this month → debt-payment expenses counted once, inside
+  it, never a separate line.
+- **`src/ui/components/safe-to-spend-hero.js` `renderBreakdown`**: when
+  `period.hasActivity`, renders a first section — `Balance at the start
+  of this month` − `Spent this month` − `Bills paid this month` +
+  `Income received this month` = `Current balance` (a new
+  `.hero__breakdown-row--subtotal` CSS — ruled, medium weight; $0
+  movement rows hidden) — then the unchanged second section (`Current
+  balance` − `Planned expenses` − `Savings goals` = `Safe to spend
+  today`). No activity → first section skipped, identical to before.
+  Over-committed unchanged. Intro trimmed to one sentence
+  ("Your Safe to Spend is the money left after setting aside everything
+  you've already spent, committed, or chosen to reserve."). Hero still
+  does no arithmetic — "−"/"+" are labels; all figures off the object.
+- `src/ui/screens/dashboard.js`: `result = getSafeToSpendBreakdown(...)`
+  (was `getSafeToSpend`; it's a superset so nothing else changed), unused
+  `getSafeToSpend` import removed.
+- Tests: 3 new in `dashboard.test.js` (no-activity inert; reconcile
+  section 1; debt-payment counted once). Verified end-to-end through the
+  real store + real actions (createExpense / mark bill paid / mark income
+  received / add goal / over-commit): both sections reconcile in every
+  scenario, adding a $50 expense moves "Spent this month" by $50 and STS
+  by $50. Docs: SAFE-TO-SPEND.md §12, ARCHITECTURE.md dashboard line.
+
+**"How is this worked out?" reworked to a fixed 5-row flow matching a
+mockup the user supplied, and unpaid bills are back in the Safe-to-Spend
+formula (flip #5) — confirmed via `AskUserQuestion`. 557 tests pass.**
+The mockup: `In checking / + Arrived after that balance / − Bills still
+to land / − Paid and spent after that balance / − Already set aside / =
+Safe until payday`, and its total reflects the "Bills still to land"
+subtraction — so matching it required folding `upcomingBillsCents` back
+into the formula.
+- **`src/modules/safe-to-spend/calculation.js`**: `totalCommittedCents =
+  upcomingBillsCents + plannedExpensesCents + goalsSavedCents` (bills
+  added). `upcomingBillsCents` JSDoc/comments flipped from "display-only"
+  to "SUBTRACTED". **Marking a bill paid is now net zero on
+  Safe-to-Spend** — it leaves `upcomingBillsCents` (bill is `paid`) and
+  debits Current Balance by the same amount at the same instant
+  (`bills/balance-effect.js`, unchanged mechanically; its header comment
+  rewritten to "net zero"). The flat Savings figure (§9) is still NOT
+  subtracted.
+- **`src/modules/dashboard/index.js` `getSafeToSpendBreakdown`**: `period`
+  block reshaped for the mockup rows — `{ inCheckingCents,
+  arrivedAfterBalanceCents, paidAndSpentAfterBalanceCents, setAsideCents }`.
+  `inCheckingCents` = `currentBalanceCents + spentThisMonth + billsPaidThisMonth
+  − incomeReceivedThisMonth` (the old `balanceBeforeSpendingCents`, renamed).
+  `paidAndSpentAfterBalanceCents` = this month's Expenses (debt-payment
+  expenses included, once) + BillPayments. `setAsideCents` =
+  `plannedExpensesCents + goalsSavedCents` (NOT bills — those are their
+  own row). Reconciles by construction:
+  `inChecking + arrived − upcomingBills − paidAndSpent − setAside ===
+  netAfterCommittedCents` → floored → `safeToSpendCents`.
+- **`src/ui/components/safe-to-spend-hero.js` `renderBreakdown`**: fixed
+  5 rows always rendered (even at $0 — "+ $0.00" etc., matching the
+  mockup), signs shown as `+ `/`− ` with a space. Total row label is
+  "Safe until payday" (not `SAFE_TO_SPEND_LABEL`; the `<h2>` headline
+  still says "Safe to spend today"). Over-committed: "After everything
+  −$X" then "Safe until payday (never below $0) $0.00". Dropped the
+  conditional first-section / `hasActivity` / `--subtotal` CSS from the
+  previous version.
+- **Verified** the mockup reproduces exactly (In checking $2,500 /
+  + $0 / − $29 / − $1,780 / − $307 / = $384; rows sum === safeToSpendCents
+  === netAfterCommittedCents) and that adding a $50 expense moves "Paid
+  and spent" +$50 and "Safe until payday" −$50.
+- **~13 tests flipped** back to "bills subtracted" across
+  `safe-to-spend.test.js` (§2, §8, §10, §16, §16a, unbounded-horizon,
+  PRODUCT.md §6 cross-check → $950), `dashboard-integration.test.js`
+  (adding a bill reduces; mark paid/unpaid net zero; every-area-combined
+  → $150,000), `qa-user-flows.test.js` (FLOW A → $540, C → $930, D →
+  difference), plus the 3 `getSafeToSpendBreakdown` tests updated to the
+  new field names. `wording.js` negative/zero copy now names bills.
+- Docs: `SAFE-TO-SPEND.md` §2 (formula + 5-flip history note), §7
+  (rewritten — "net zero", not "only via Mark paid"), §3c, §11b, §12
+  (the 5-row table), §13; `PRODUCT.md` §6 (example → the flow, $384);
+  `DATA-MODEL.md` §3a (bill-paid = net zero).
 
 **Current phase: Phase 9 — Data Backup / Import / Export**, not started.
 See `docs/ROADMAP.md` for full detail; do not jump ahead to later phases

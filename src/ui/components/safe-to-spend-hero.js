@@ -1,25 +1,73 @@
 // The hero card — the single most important thing on the dashboard
 // (Phase 4 "primary objective": understand financial position in ~5
-// seconds). Renders straight from the engine's result object; computes
-// no money math of its own — the "committed vs. available" progress bar
-// uses `result.totalCommittedCents`, which the engine already computes
-// (see docs/SAFE-TO-SPEND.md §11b), never re-derived here.
+// seconds). Computes no money math of its own — every figure (the
+// amount, the progress bar, the "How is this worked out?" rows) is read
+// from what `getSafeToSpendBreakdown` (src/modules/dashboard/) returned,
+// which is `getSafeToSpend`'s result plus a `period` block (see
+// docs/SAFE-TO-SPEND.md §11b/§13). The "−"/"+" prefixes in the breakdown
+// are labels, not arithmetic done here.
 
 import { el } from '../dom.js';
 import { iconChip } from './icons.js';
-import { renderExpenseForm } from './expenses-section.js';
-import { renderPopup } from './popup.js';
-import { createExpenseAction } from '../../modules/expenses/index.js';
 import { formatCents } from '../../core/money.js';
-import { SAFE_TO_SPEND_LABEL, PLANNING_DISCLAIMER, getSafeToSpendMessage } from '../../modules/safe-to-spend/index.js';
+import { SAFE_TO_SPEND_LABEL, PLANNING_DISCLAIMER, getSafeToSpendMessage, getSafeToSpendSubtext } from '../../modules/safe-to-spend/index.js';
 
-const DEFAULT_DESCRIPTION = "You're good — this is what's left after your planned commitments.";
+const row = (label, text, extraClass = '') =>
+  el('div', { class: `hero__breakdown-row${extraClass ? ' ' + extraClass : ''}` }, [
+    el('span', {}, label),
+    el('span', { class: 'hero__breakdown-amount' }, text),
+  ]);
 
-// Whether the hero's "+ Add expense" popup is open — transient UI state,
-// deliberately outside the store (see docs/ARCHITECTURE.md §4). Current
-// Balance has its own standalone card again (src/ui/screens/dashboard.js
-// — see CLAUDE.md "Current status"), not shown here at all anymore.
-let expenseFormOpen = false;
+/**
+ * The collapsed "How is this worked out?" disclosure. Shows the EXACT
+ * figures behind the headline and nothing else — a plain-language intro,
+ * then the rows. There is no second calculation: every number is read
+ * straight off what `getSafeToSpendBreakdown` returned:
+ *
+ *   In checking                          (period.inCheckingCents)
+ *   + Arrived after that balance         (period.arrivedAfterBalanceCents)
+ *   − Bills still to land                (result.upcomingBillsCents)
+ *   − Paid and spent after that balance  (period.paidAndSpentAfterBalanceCents)
+ *   − Already set aside                  (period.setAsideCents)
+ *   ─────────────────────────────────
+ *   Safe until payday                    (result.safeToSpendCents)
+ *
+ * By construction the rows reconcile to `netAfterCommittedCents` (then
+ * floored to $0 → `safeToSpendCents`, §10) — see getSafeToSpendBreakdown's
+ * doc in src/modules/dashboard/index.js. The "+"/"−" are labels, not
+ * arithmetic done here (CLAUDE.md — money math stays in
+ * src/modules/safe-to-spend/ + the dashboard composer).
+ *
+ * Over-committed (`isNegative`): the true negative total is shown as
+ * "After everything" before the floored $0 headline.
+ */
+function renderBreakdown(result) {
+  const p = result.period;
+  const rows = [
+    row('In checking', formatCents(p.inCheckingCents)),
+    row('Arrived after that balance', `+ ${formatCents(p.arrivedAfterBalanceCents)}`),
+    row('Bills still to land', `− ${formatCents(result.upcomingBillsCents)}`),
+    row('Paid and spent after that balance', `− ${formatCents(p.paidAndSpentAfterBalanceCents)}`),
+    row('Already set aside', `− ${formatCents(p.setAsideCents)}`),
+  ];
+
+  if (result.isNegative) {
+    rows.push(row('After everything', formatCents(result.netAfterCommittedCents)));
+    rows.push(row('Safe until payday (never below $0)', formatCents(result.safeToSpendCents), 'hero__breakdown-row--total'));
+  } else {
+    rows.push(row('Safe until payday', formatCents(result.safeToSpendCents), 'hero__breakdown-row--total'));
+  }
+
+  return el('details', { class: 'hero__breakdown' }, [
+    el('summary', { class: 'hero__breakdown-summary' }, 'How is this worked out?'),
+    el(
+      'p',
+      { class: 'hero__breakdown-intro' },
+      "Your Safe to Spend is the money left after setting aside everything you've already spent, committed, or chosen to reserve.",
+    ),
+    el('div', { class: 'hero__breakdown-rows' }, rows),
+  ]);
+}
 
 /** "$X committed of $Y available" — a different view of numbers the engine
  * already returns, not a new calculation (see docs/SAFE-TO-SPEND.md §11b). */
@@ -39,55 +87,27 @@ function renderCommittedProgress(result) {
 }
 
 /**
- * @param {ReturnType<typeof import('../../modules/safe-to-spend/index.js').getSafeToSpend>} result
- * @param {{state: object, dispatch: Function, requestRender?: () => void}} options
- *   `state` is only threaded through to the "+ Add expense" popup's
- *   category field suggestions (`getKnownCategories`) — nothing else here
- *   reads it.
+ * @param {ReturnType<typeof import('../../modules/dashboard/index.js').getSafeToSpendBreakdown>} result
+ *   `getSafeToSpend`'s result plus a `period` block. Pure display — the
+ *   "+ Add expense" action lives at the top of the dashboard (its
+ *   view-header `titleAction`), not on this card.
  */
-export function renderSafeToSpendHero(result, { state, dispatch, requestRender } = {}) {
-  const description = getSafeToSpendMessage(result) ?? DEFAULT_DESCRIPTION;
+export function renderSafeToSpendHero(result) {
+  // An ordinary positive result has no explanatory paragraph — null here
+  // (the `el` children array drops nulls). getSafeToSpendMessage still
+  // returns copy for the negative / exact-zero cases.
+  const description = getSafeToSpendMessage(result);
   const amountClass = result.isNegative ? 'hero__amount hero__amount--negative' : 'hero__amount';
-
   const heroToneColor = result.isNegative ? 'var(--color-status-attention-text)' : 'var(--color-status-positive-text)';
-
-  let cta = null;
-  let popup = null;
-  if (dispatch) {
-    const closeExpenseForm = () => {
-      expenseFormOpen = false;
-      requestRender?.();
-    };
-    cta = el(
-      'div',
-      { class: 'hero__cta' },
-      el(
-        'button',
-        {
-          type: 'button',
-          class: 'btn btn--primary',
-          onclick: () => {
-            expenseFormOpen = true;
-            requestRender?.();
-          },
-        },
-        '+ Add expense'
-      )
-    );
-    if (expenseFormOpen) {
-      const form = renderExpenseForm({ state, onSubmit: (input) => { dispatch(createExpenseAction(input, { now: new Date() })); closeExpenseForm(); } });
-      popup = renderPopup({ titleId: 'hero-add-expense-heading', title: 'Add expense', body: form, onClose: closeExpenseForm });
-    }
-  }
 
   return el('section', { class: 'card hero', 'aria-labelledby': 'safe-to-spend-heading' }, [
     el('div', { class: 'hero__icon' }, [iconChip('trending-up', { color: heroToneColor })]),
     el('h2', { class: 'hero__label', id: 'safe-to-spend-heading' }, SAFE_TO_SPEND_LABEL),
     el('p', { class: amountClass }, formatCents(result.safeToSpendCents)),
-    el('p', { class: 'hero__description' }, description),
+    el('p', { class: 'hero__subtext' }, getSafeToSpendSubtext(result)),
+    description ? el('p', { class: 'hero__description' }, description) : null,
     renderCommittedProgress(result),
-    cta,
+    renderBreakdown(result),
     el('p', { class: 'hero__disclaimer' }, PLANNING_DISCLAIMER),
-    popup,
-  ].filter(Boolean));
+  ]);
 }

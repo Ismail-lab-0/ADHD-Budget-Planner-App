@@ -10,11 +10,12 @@
 import { getAllBills } from '../bills/index.js';
 import { getAllPlannedExpenses } from '../planned-expenses/index.js';
 import { getUnreceivedIncomes } from '../incomes/index.js';
-import { getExpensesForPeriod, getExpensesTotalCents } from '../expenses/index.js';
+import { getExpensesForPeriod, getExpensesTotalCents, resolvePeriodRange } from '../expenses/index.js';
 import { getIncomeReceiptsForPeriod, getIncomeReceiptsTotalCents } from '../income-receipts/index.js';
 import { getBillPaymentsForPeriod, getBillPaymentsTotalCents } from '../bill-payments/index.js';
-import { getCurrentBillDueDate } from '../safe-to-spend/index.js';
+import { getCurrentBillDueDate, getSafeToSpend } from '../safe-to-spend/index.js';
 import { isValidAmountCents } from '../../core/money.js';
+import { getLocalDateKey } from '../../core/date.js';
 
 const DEFAULT_LIMIT = 5;
 
@@ -78,8 +79,9 @@ export function getUpcomingBills(state, { limit = 3 } = {}) {
 
 /**
  * Total amount currently owed across every active, unpaid bill — the
- * dollar-amount counterpart to `getUpcomingBills`'s `totalCount`, for the
- * summary strip's "Total bills" tile (src/ui/components/summary-strip.js).
+ * dollar-amount counterpart to `getUpcomingBills`'s `totalCount`. (Kept
+ * available; the summary-strip tile that first used it was removed in the
+ * reference-based dashboard redesign — see CLAUDE.md.)
  * Same active-and-unpaid filter as `getUpcomingBills`, but unbounded (no
  * `limit`, since a sum needs every matching bill, not just the nearest
  * few) and with no due-date horizon applied — unlike `getSafeToSpend`'s
@@ -178,4 +180,120 @@ export function getPeriodSummary(state, { startDateKey = null, endDateKey = null
   }).length;
 
   return { moneyInCents, moneyOutCents, billsDueCount };
+}
+
+/**
+ * Everything the Safe-to-Spend hero's "How is this worked out?" panel
+ * needs, as one object — the canonical `getSafeToSpend` result plus a
+ * `period` block of grouped figures the panel shows row by row. **This
+ * module composes; it does not re-derive the Safe-to-Spend arithmetic**
+ * (docs/ARCHITECTURE.md §7, CLAUDE.md) — every figure below is either
+ * straight off `getSafeToSpend` or a plain sum of a real dated log
+ * (`Expense` / `BillPayment` / `IncomeReceipt`), the same logs
+ * `getPeriodSummary` already reads.
+ *
+ * The panel renders (see src/ui/components/safe-to-spend-hero.js):
+ *
+ *   In checking                         inCheckingCents
+ *   + Arrived after that balance        arrivedAfterBalanceCents
+ *   − Bills still to land               result.upcomingBillsCents
+ *   − Paid and spent after that balance paidAndSpentAfterBalanceCents
+ *   − Already set aside                 setAsideCents
+ *   ───────────────────────────────
+ *   Safe until payday                   result.safeToSpendCents
+ *
+ * `inCheckingCents` is `currentBalanceCents` with this month's logged
+ * balance movements added back (`+ spent + billsPaid − incomeReceived`),
+ * so the flow reconciles **exactly, by construction**:
+ *
+ *   inChecking + arrived − billsStillToLand − paidAndSpent − setAside
+ *     === currentBalance − upcomingBills − plannedExpenses − goalsSaved
+ *     === netAfterCommittedCents   (then floored at 0 → safeToSpendCents, §10)
+ *
+ * Anything else that moved the balance this month with no dated log — a
+ * savings transfer (`budget/add-to-savings`), a manual balance edit — is
+ * absorbed into `inCheckingCents`.
+ *
+ * Grouping: `paidAndSpentAfterBalanceCents` = this month's `Expense`s
+ * (which already include debt-payment expenses, counted once) + this
+ * month's `BillPayment`s. `setAsideCents` = `plannedExpensesCents +
+ * goalsSavedCents` (NOT `upcomingBillsCents` — that's its own
+ * "Bills still to land" row).
+ *
+ * @param {object} state
+ * @param {{now?: Date}} [options]
+ * @returns {ReturnType<typeof getSafeToSpend> & {period: {inCheckingCents: number, arrivedAfterBalanceCents: number, paidAndSpentAfterBalanceCents: number, setAsideCents: number}}}
+ */
+export function getSafeToSpendBreakdown(state, { now = new Date() } = {}) {
+  const result = getSafeToSpend(state, { now });
+
+  const range = resolvePeriodRange('month', { now }) ?? {};
+  const startDateKey = range.startDateKey ?? null;
+  const endDateKey = range.endDateKey ?? null;
+
+  const spentThisMonthCents = getExpensesTotalCents(
+    getExpensesForPeriod(state, { period: 'custom', from: startDateKey, to: endDateKey, now })
+  );
+  const billsPaidThisMonthCents = getBillPaymentsTotalCents(getBillPaymentsForPeriod(state, { startDateKey, endDateKey }));
+  const incomeReceivedThisMonthCents = getIncomeReceiptsTotalCents(getIncomeReceiptsForPeriod(state, { startDateKey, endDateKey }));
+
+  const inCheckingCents =
+    result.currentBalanceCents + spentThisMonthCents + billsPaidThisMonthCents - incomeReceivedThisMonthCents;
+
+  return {
+    ...result,
+    period: {
+      inCheckingCents,
+      arrivedAfterBalanceCents: incomeReceivedThisMonthCents,
+      paidAndSpentAfterBalanceCents: spentThisMonthCents + billsPaidThisMonthCents,
+      setAsideCents: result.plannedExpensesCents + result.goalsSavedCents,
+    },
+  };
+}
+
+/**
+ * Money in vs money out for each calendar month of `now`'s year — the
+ * Dashboard's "Overview" chart. Composes `getPeriodSummary` per month, so
+ * "in" is confirmed `IncomeReceipt`s and "out" is `Expense`s +
+ * `BillPayment`s, exactly as the rest of the app defines them. Months
+ * with no activity are still returned (a zero bar reads as a quiet
+ * month), including months later in the year than today.
+ * @param {object} state
+ * @param {{now?: Date}} [options]
+ * @returns {Array<{key: string, label: string, inCents: number, outCents: number}>}
+ */
+export function getMonthlyInVsOut(state, { now = new Date() } = {}) {
+  const year = now.getFullYear();
+  const monthName = new Intl.DateTimeFormat('en-US', { month: 'short' });
+  const rows = [];
+  for (let month = 0; month < 12; month++) {
+    const first = new Date(year, month, 1);
+    const last = new Date(year, month + 1, 0);
+    const summary = getPeriodSummary(state, { startDateKey: getLocalDateKey(first), endDateKey: getLocalDateKey(last), now });
+    rows.push({ key: `${year}-${String(month + 1).padStart(2, '0')}`, label: monthName.format(first), inCents: summary.moneyInCents, outCents: summary.moneyOutCents });
+  }
+  return rows;
+}
+
+/**
+ * This calendar month's logged spending vs last month's, with the percent
+ * change — the delta chip on the Dashboard's "Total Expenses" stat card.
+ * `Expense` records only (a debt payment is already one). `deltaPct` is
+ * `null` when last month had no spending (no meaningful base).
+ * @param {object} state
+ * @param {{now?: Date}} [options]
+ * @returns {{thisMonthCents: number, lastMonthCents: number, deltaPct: number|null}}
+ */
+export function getExpensesMonthOverMonth(state, { now = new Date() } = {}) {
+  const total = (period) => {
+    const range = resolvePeriodRange(period, { now });
+    return getExpensesForPeriod(state, { period: 'custom', from: range?.startDateKey ?? null, to: range?.endDateKey ?? null, now }).reduce(
+      (sum, expense) => sum + (isValidAmountCents(expense?.amountCents) ? expense.amountCents : 0),
+      0
+    );
+  };
+  const thisMonthCents = total('month');
+  const lastMonthCents = total('lastMonth');
+  const deltaPct = lastMonthCents > 0 ? ((thisMonthCents - lastMonthCents) / lastMonthCents) * 100 : null;
+  return { thisMonthCents, lastMonthCents, deltaPct };
 }

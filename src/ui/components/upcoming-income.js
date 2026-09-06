@@ -1,11 +1,13 @@
 // "Upcoming income" — the nearest not-yet-received incomes, with a
 // one-tap "Mark received" that credits Current Balance automatically (see
-// docs/DATA-MODEL.md "Current Balance model"). Deliberately not
-// period-scoped, same as "Bills due soon" — always "what's next,"
-// regardless of the header bar's global period selector. Selection lives
-// in src/modules/dashboard/index.js `getUpcomingIncome` (composition
-// only); this file only renders it and reuses the existing
-// `markIncomeReceivedAction` — no new income-related math here.
+// docs/DATA-MODEL.md "Current Balance model"). Two modes:
+//   - compact (Dashboard summary): the list + "Mark received" + a
+//     "View all income →" link that routes to the Income view.
+//   - full (the Income view, src/ui/screens/income-view.js): the same
+//     list plus "+ Add income" (a popup, reusing renderIncomeForm).
+//
+// Selection lives in src/modules/dashboard/index.js `getUpcomingIncome`
+// (composition only); this file only renders it.
 
 import { el } from '../dom.js';
 import { emptyState } from './empty-state.js';
@@ -17,12 +19,8 @@ import { isOverdue, daysBetween, parseLocalDate } from '../../core/date.js';
 import { markIncomeReceivedAction, createIncomeAction } from '../../modules/incomes/index.js';
 import { getUpcomingIncome } from '../../modules/dashboard/index.js';
 
-// Whether the "+ Add income" popup is open — transient UI state,
-// deliberately outside the store (see docs/ARCHITECTURE.md §4). Moved
-// here from "This Period" (since folded into the merged "Right now" card
-// — src/ui/components/right-now-section.js — which has no add-income
-// affordance of its own) so "add income" lives next to the list it
-// actually shows up in.
+// Whether the "+ Add income" popup is open — transient UI state (see
+// docs/ARCHITECTURE.md §4). Only reachable in full (non-compact) mode.
 let addIncomeFormOpen = false;
 
 function expectedLabel(dateStr, now) {
@@ -58,8 +56,10 @@ function incomeRow({ income, now, dispatch }) {
  * @param {Function} options.dispatch
  * @param {Date} [options.now]
  * @param {() => void} [options.requestRender]
+ * @param {boolean} [options.compact] Dashboard summary mode. Default false (the Income view).
+ * @param {() => void} [options.onViewAll] target of the "View all income →" link (compact only).
  */
-export function renderUpcomingIncome({ state, dispatch, now = new Date(), requestRender }) {
+export function renderUpcomingIncome({ state, dispatch, now = new Date(), requestRender, compact = false, onViewAll }) {
   const { items } = getUpcomingIncome(state, { limit: 3 });
 
   const body =
@@ -75,19 +75,26 @@ export function renderUpcomingIncome({ state, dispatch, now = new Date(), reques
     addIncomeFormOpen = false;
     requestRender?.();
   };
-  const addLink = el(
-    'button',
-    { type: 'button', class: 'link-button', onclick: () => { addIncomeFormOpen = true; requestRender?.(); } },
-    '+ Add income'
-  );
-  const popup = addIncomeFormOpen
-    ? renderPopup({
-        titleId: 'add-income-heading',
-        title: 'Add income',
-        body: renderIncomeForm({ onSubmit: (input) => { dispatch(createIncomeAction(input, { now })); close(); } }),
-        onClose: close,
-      })
-    : null;
+
+  const headerAction = compact
+    ? onViewAll
+      ? el('button', { type: 'button', class: 'link-button', onclick: onViewAll }, 'View all income →')
+      : null
+    : el(
+        'button',
+        { type: 'button', class: 'link-button', onclick: () => { addIncomeFormOpen = true; requestRender?.(); } },
+        '+ Add income'
+      );
+
+  const popup =
+    !compact && addIncomeFormOpen
+      ? renderPopup({
+          titleId: 'add-income-heading',
+          title: 'Add income',
+          body: renderIncomeForm({ onSubmit: (input) => { dispatch(createIncomeAction(input, { now })); close(); } }),
+          onClose: close,
+        })
+      : null;
 
   return el(
     'section',
@@ -95,8 +102,8 @@ export function renderUpcomingIncome({ state, dispatch, now = new Date(), reques
     [
       el('div', { class: 'card__header-row' }, [
         sectionHeading('trending-up', 'Upcoming income', 'upcoming-income-heading', { color: 'var(--color-status-positive-text)' }),
-        addLink,
-      ]),
+        headerAction,
+      ].filter(Boolean)),
       body,
       popup,
     ].filter(Boolean)

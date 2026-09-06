@@ -5,7 +5,7 @@
 // The empty state below is the budget-product shape (docs/PRODUCT.md) —
 // every collection empty, settings/budget at their defaults.
 
-export const CURRENT_SCHEMA_VERSION = 8;
+export const CURRENT_SCHEMA_VERSION = 10;
 
 /** @returns the state tree for a brand-new install, at the current schema version. */
 export function createEmptyState() {
@@ -35,6 +35,9 @@ export function createEmptyState() {
     incomeReceipts: [],
     billPayments: [],
     expenseDrafts: [],
+    debts: [],
+    debtPayments: [],
+    goals: [],
   };
 }
 
@@ -141,6 +144,23 @@ function migrateV7ToV8(state) {
   return { ...state, expenseDrafts: state.expenseDrafts ?? [] };
 }
 
+// v8 -> v9: adds the `debts` and `debtPayments` collections — Debt
+// Tracking (docs/DATA-MODEL.md "Debt" / "DebtPayment"), added ahead of
+// docs/ROADMAP.md's phase order at the user's explicit request. Purely
+// additive; existing users get `debts: []` / `debtPayments: []` and see
+// no data loss (docs/DATA-MODEL.md §11).
+function migrateV8ToV9(state) {
+  return { ...state, debts: state.debts ?? [], debtPayments: state.debtPayments ?? [] };
+}
+
+// v9 -> v10: adds the `goals` collection — savings goals (docs/DATA-MODEL.md
+// "Goal"), the rework of the former Budget tab into a Goals tab, at the
+// user's explicit request. Purely additive; existing users get `goals: []`
+// and see no data loss.
+function migrateV9ToV10(state) {
+  return { ...state, goals: state.goals ?? [] };
+}
+
 const migrations = {
   2: (state) => ({ ...state, tasks: (state.tasks ?? []).map(migrateTaskV1ToV2) }),
   3: migrateV2ToV3,
@@ -149,6 +169,8 @@ const migrations = {
   6: migrateV5ToV6,
   7: migrateV6ToV7,
   8: migrateV7ToV8,
+  9: migrateV8ToV9,
+  10: migrateV9ToV10,
 };
 
 /**
@@ -194,7 +216,7 @@ export function migrate(state, options = {}) {
 // calculation can trust these are always real arrays, even if the raw
 // stored value degraded into something else (an object, a string, `null`)
 // through hand-editing or a future bug. See Phase 8 QA (docs/QA-REPORT.md).
-const ARRAY_COLLECTION_KEYS = ['incomes', 'bills', 'plannedExpenses', 'expenses', 'categoryBudgets', 'incomeReceipts', 'billPayments', 'expenseDrafts'];
+const ARRAY_COLLECTION_KEYS = ['incomes', 'bills', 'plannedExpenses', 'expenses', 'categoryBudgets', 'incomeReceipts', 'billPayments', 'expenseDrafts', 'debts', 'debtPayments', 'goals'];
 
 function normalizeCollections(state) {
   const normalized = { ...state };

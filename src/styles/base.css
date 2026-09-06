@@ -18,19 +18,28 @@
    `--text-primary`/`--bg` in either mode — see the values below. */
 
 :root {
-  /* ---- Color: light (default) ---- */
-  --bg: #faf7f2;
+  /* ---- Color: light (default) ----
+     "Steady" — a cool, low-arousal palette: a faintly teal-tinted paper
+     ground, deep slate ink, and a calm deep-teal accent. Deliberately
+     moved off the earlier warm cream + sage green (which read as
+     off-the-shelf / competitor-ish). Cool hues sit easier for a
+     low-cognitive-load, ADHD-friendly UI; teal keeps the "money =
+     balance / clarity / positive" association without being the same
+     green, and red stays the one "negative" signal. All values
+     contrast-checked against `--bg`/`--surface` at AA or better for the
+     weight each is used at. */
+  --bg: #f2f6f6;
   --surface: #ffffff;
-  --border: #eae4da;
-  --text-primary: #2b2a28;
-  --text-secondary: #8b8579;
-  --accent: #4a7c59;
-  --accent-bg: #e8f0e9;
-  --warning: #c08a3e;
-  --warning-bg: #fbf1e1;
-  --danger: #b5654a;
-  --danger-bg: #fbeae3;
-  --progress-track: #efeae2;
+  --border: #e1e8e7;
+  --text-primary: #23323a;
+  --text-secondary: #566a71;
+  --accent: #0e7c76;
+  --accent-bg: #ddefec;
+  --warning: #b06f1f;
+  --warning-bg: #f7ecdb;
+  --danger: #bb463b;
+  --danger-bg: #f8e5e1;
+  --progress-track: #e5ecea;
 
   /* ---- Legacy/semantic aliases — every existing component reads these;
      keeping them means the palette above is the only thing that ever
@@ -52,27 +61,43 @@
   --color-status-positive-text: var(--accent);
   --color-status-caution-bg: var(--warning-bg);
   --color-status-caution-text: var(--warning);
-  --shadow-sm: 0 1px 3px rgba(43, 38, 32, 0.06), 0 1px 2px rgba(43, 38, 32, 0.04);
-  --shadow-md: 0 10px 28px rgba(43, 38, 32, 0.1);
+  /* Cool slate shadow tint to match the palette (was a warm brown). */
+  --shadow-sm: 0 1px 3px rgba(26, 42, 49, 0.07), 0 1px 2px rgba(26, 42, 49, 0.05);
+  /* A gentle mid lift — between -sm and -md; the per-tab summary cards. */
+  --shadow: 0 3px 10px rgba(26, 42, 49, 0.08);
+  --shadow-md: 0 10px 28px rgba(26, 42, 49, 0.12);
 
-  /* Category accent colors — distinct, warm/pastel hues so a list of mixed
-     categories reads as organized rather than a rainbow. Deliberately not
-     reusing --accent (income/Safe-to-Spend) or --danger (warnings/
-     overdue) — those stay the only two colors with a specific meaning
-     attached; category colors are purely identifying, not judgmental
-     (docs/PRODUCT.md §3). Applied via `iconChip()`/`categoryIconChip()`
-     (src/ui/components/icons.js), never hardcoded per-component. Outside
-     the palette given for the rest of the app — a fixed set of hues has
-     to stay stable for recognizability regardless of theme, the same
-     reason these aren't swapped by the toggle below either, only tuned
-     for contrast against each surface. */
-  --color-cat-groceries: #4a9c7a;
-  --color-cat-eating-out: #c17847;
-  --color-cat-transport: #4a7fb8;
-  --color-cat-shopping: #c96f95;
-  --color-cat-entertainment: #8f6bb8;
-  --color-cat-health: #c17262;
-  --color-cat-subscriptions: #6478b0;
+  /* Category identifier colours — a fixed set of distinct hues so a list
+     of mixed categories reads as organized, not a rainbow. Purely
+     identifying, never judgmental (docs/PRODUCT.md §3); deliberately not
+     --accent or --danger (those keep their one meaning). Applied via
+     `iconChip()`/`categoryIconChip()` (src/ui/components/icons.js) and the
+     dashboard donut (src/ui/components/charts.js). Re-stepped for the
+     dashboard-chart work to a set that clears the data-viz normal-vision
+     floor (worst adjacent ΔE 15.3, was 11.6 — a fail) and the chroma
+     floor (two of the old hues read as gray); the remaining
+     colour-blindness deltas are in the warn band, legal here because the
+     donut always ships the legend + per-slice value/% + surface gaps as
+     the identity channel (colour is never the only cue). Seven arbitrary
+     hues cannot fully clear CVD on any single surface — that is a known
+     limit of the medium, mitigated by the legend, not a bug. */
+  --color-cat-groceries: #1f9e63;
+  --color-cat-eating-out: #e08133;
+  --color-cat-transport: #2f7fd6;
+  --color-cat-shopping: #d24f9a;
+  --color-cat-entertainment: #8a5fd0;
+  --color-cat-health: #d94b3e;
+  --color-cat-subscriptions: #0f9b9b;
+
+  /* Chart series — the dashboard's "Income vs Expenses" columns
+     (src/ui/components/charts.js): a teal / coral pair, teal for money
+     in (consistent with the accent's "positive" role), coral for money
+     out. Deeper than a pastel so both read clearly on `--surface`;
+     validated for both themes against the data-viz chroma / CVD /
+     contrast checks. The chart always ships a legend, so identity is
+     never colour-alone. */
+  --color-chart-income: #0f9b9b;
+  --color-chart-expense: #d4663f;
 
   /* Typography */
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -86,6 +111,7 @@
   --font-size-lg: 1.125rem;
   --font-size-xl: 1.375rem;
   --font-size-2xl: 1.75rem;
+  --font-size-3xl: 2.25rem;
   --font-size-hero: clamp(2.75rem, 9vw, 3.75rem);
   --line-height-base: 1.5;
   --line-height-tight: 1.25;
@@ -121,11 +147,14 @@
   --tap-target-min: 44px;
 }
 
-/* Dark theme tokens — a warm dark charcoal, not a neutral/blue-gray dark
-   (the same warm identity as the light theme, not a different app in dark
-   mode), deliberately desaturated/lower-contrast relative to a typical
-   "technical" dark UI to match the light theme's calm, low-cognitive-load
-   feel (CLAUDE.md "Design system"). Applied two ways so both an explicit
+/* Dark theme tokens — a warm dark charcoal base, deliberately
+   desaturated/lower-contrast relative to a typical "technical" dark UI
+   to match the calm, low-cognitive-load feel (CLAUDE.md "Design
+   system"). Only the *accent* trio was updated to teal alongside the
+   light-mode "Steady" repalette above, so the brand/positive colour
+   stays consistent between modes; the warm charcoal base is otherwise
+   unchanged and is a candidate for a future cool-dark pass to fully
+   match the new light theme. Applied two ways so both an explicit
    in-app choice (src/ui/components/theme-toggle.js, `settings.theme`,
    persisted through the existing storage adapter — see docs/DATA-MODEL.md,
    already the app's one localStorage path) and the OS-level
@@ -144,8 +173,8 @@
     --border: #38362f;
     --text-primary: #efeae2;
     --text-secondary: #9c9689;
-    --accent: #7fae8c;
-    --accent-bg: #26332a;
+    --accent: #5fb3ab;
+    --accent-bg: #1e332f;
     --warning: #d4a05c;
     --warning-bg: #332b1e;
     --danger: #c97f63;
@@ -158,7 +187,7 @@
     --color-text-secondary: var(--text-secondary);
     --color-border: var(--border);
     --color-accent: var(--accent);
-    --color-accent-contrast: #16241c;
+    --color-accent-contrast: #0c2622;
     --color-accent-muted: var(--accent-bg);
     --color-focus: var(--accent);
     --color-status-attention-bg: var(--danger-bg);
@@ -171,18 +200,22 @@
        flat dark card next to a dark background has no depth cue at all
        without one — but kept softer than a typical near-black dark theme. */
     --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.28);
+    --shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 10px 26px rgba(0, 0, 0, 0.38);
 
     /* Same hue identity as the light-mode set, tuned for contrast against
        a dark surface without the higher saturation a "technical" dark UI
        would use. */
-    --color-cat-groceries: #6bad91;
-    --color-cat-eating-out: #c99a75;
-    --color-cat-transport: #7d9dc4;
-    --color-cat-shopping: #c791a6;
-    --color-cat-entertainment: #a08cc4;
-    --color-cat-health: #c9948a;
-    --color-cat-subscriptions: #8996bf;
+    --color-cat-groceries: #31a071;
+    --color-cat-eating-out: #cf8543;
+    --color-cat-transport: #4386d4;
+    --color-cat-shopping: #cf5c9e;
+    --color-cat-entertainment: #8d64cf;
+    --color-cat-health: #d9564a;
+    --color-cat-subscriptions: #1f9d9d;
+
+    --color-chart-income: #1f9d9d;
+    --color-chart-expense: #d67854;
   }
 }
 
@@ -192,8 +225,8 @@
   --border: #38362f;
   --text-primary: #efeae2;
   --text-secondary: #9c9689;
-  --accent: #7fae8c;
-  --accent-bg: #26332a;
+  --accent: #5fb3ab;
+  --accent-bg: #1e332f;
   --warning: #d4a05c;
   --warning-bg: #332b1e;
   --danger: #c97f63;
@@ -206,7 +239,7 @@
   --color-text-secondary: var(--text-secondary);
   --color-border: var(--border);
   --color-accent: var(--accent);
-  --color-accent-contrast: #16241c;
+  --color-accent-contrast: #0c2622;
   --color-accent-muted: var(--accent-bg);
   --color-focus: var(--accent);
   --color-status-attention-bg: var(--danger-bg);
@@ -216,14 +249,18 @@
   --color-status-caution-bg: var(--warning-bg);
   --color-status-caution-text: var(--warning);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 10px 26px rgba(0, 0, 0, 0.38);
-  --color-cat-groceries: #6bad91;
-  --color-cat-eating-out: #c99a75;
-  --color-cat-transport: #7d9dc4;
-  --color-cat-shopping: #c791a6;
-  --color-cat-entertainment: #a08cc4;
-  --color-cat-health: #c9948a;
-  --color-cat-subscriptions: #8996bf;
+  --color-cat-groceries: #31a071;
+  --color-cat-eating-out: #cf8543;
+  --color-cat-transport: #4386d4;
+  --color-cat-shopping: #cf5c9e;
+  --color-cat-entertainment: #8d64cf;
+  --color-cat-health: #d9564a;
+  --color-cat-subscriptions: #1f9d9d;
+
+  --color-chart-income: #1f9d9d;
+  --color-chart-expense: #d67854;
 }
 
 

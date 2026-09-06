@@ -35,8 +35,21 @@ const ICON_PATHS = {
   edit: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="M15 5l4 4"/>',
   trash: '<path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/>',
   close: '<path d="M18 6 6 18"/><path d="M6 6l12 12"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   moon: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4 6.8 6.8 0 0 0 20 14.5Z"/>',
+  // Added for the sidebar navigation (src/ui/components/sidebar.js) — same
+  // hand-authored 24x24 stroke style as the rest of this set.
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  home: '<path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V19a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-8.5"/>',
+  'credit-card': '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/>',
+  'chevron-left': '<path d="M15 6l-6 6 6 6"/>',
+  'chevron-right': '<path d="M9 6l6 6-6 6"/>',
+  settings: '<circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M19.4 4.6l-2.1 2.1M6.7 17.3l-2.1 2.1"/>',
+  // The app's own brand mark (src/ui/components/brand.js) — a rounded
+  // "plan" frame with a check: money that's accounted for. Only used in
+  // the header bar / sidebar wordmark lockup, on the accent-filled badge.
+  brand: '<rect x="3" y="5.5" width="18" height="14" rx="4"/><path d="M8 12.4l2.6 2.6L16.2 9.4"/>',
 };
 
 function svgMarkup(name, size) {
