@@ -2841,9 +2841,11 @@ etc. being publicly fetchable on the live site. `docs/` now holds both
 the generated artifact and the project's `*.md` docs (they coexist; no
 collision). `.nojekyll` moved to `docs/.nojekyll`. Older entries above
 that mention `dist/index.html` refer to this same artifact at its former
-path. The live site is `https://ismail-lab-0.github.io/adhd-budget-planner/`
-(the repo was renamed from `jebbouriismail0-ship-it/adhd-life-planner`);
-the old `jebbouriismail0-ship-it.github.io` Pages URL is dead.
+path. Production is `Ismail-lab-0/ADHD-Budget-Planner-App`, live at
+`https://ismail-lab-0.github.io/ADHD-Budget-Planner-App/` (`origin` points
+here). The earlier `jebbouriismail0-ship-it/adhd-life-planner` →
+`Ismail-lab-0/adhd-budget-planner` repo is abandoned and its Pages URL is
+dead.
 
 **Current phase: Phase 9 — Data Backup / Import / Export**, not started.
 See `docs/ROADMAP.md` for full detail; do not jump ahead to later phases
