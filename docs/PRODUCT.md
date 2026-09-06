@@ -141,7 +141,7 @@ beyond what serves it.
 14. **Import/Export** — the user's only durability guarantee, since there's
     no backend or account (see `docs/DATA-MODEL.md`).
 15. **Final standalone HTML distribution** — the shipped artifact is one
-    self-contained `dist/index.html` (see `docs/ARCHITECTURE.md`).
+    self-contained `docs/index.html` (see `docs/ARCHITECTURE.md`).
 
 Items 13–15 are infrastructure, already established by the existing
 foundation (Phase 0/1) and largely reusable as-is — see §8.

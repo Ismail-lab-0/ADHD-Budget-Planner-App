@@ -1,7 +1,7 @@
 // build/pwa.js — the PWA sidecar files for the FULL / PAID build ONLY
-// (dist/app-x7k2m9/). The demo build never calls anything in here, so
+// (docs/app-x7k2m9/). The demo build never calls anything in here, so
 // nothing PWA-related — no manifest, no service worker, no icons, no
-// <head> tags — ever reaches dist/index.html.
+// <head> tags — ever reaches docs/index.html.
 //
 // Zero dependencies, no network access at build time (CLAUDE.md): the two
 // icon PNGs (192 / 512) and the iOS apple-touch-icon (180) are rasterised

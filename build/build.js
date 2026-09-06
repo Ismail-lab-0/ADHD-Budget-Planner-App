@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 // Inlines /src (JS + CSS) into a single self-contained HTML file:
-// `--demo` -> dist/index.html (gated public demo), no flag ->
-// dist/app-x7k2m9/index.html (full paid build). The paid build sits at
-// an unguessable path — not a guessable filename — so it isn't trivially
-// discoverable from the public demo's origin; buyers still get a real
-// index.html (Add to Home Screen / offline install need that name). The
-// two builds differ only by the DEMO_MODE flag rewrite below; see
-// src/ui/demo-gate.js. See
+// `--demo` -> docs/index.html (gated public demo), no flag ->
+// docs/app-x7k2m9/index.html (full paid build). Output lives in docs/
+// because GitHub Pages' "deploy from a branch" only offers / or /docs as
+// the publish folder — putting the build there (and NOT at the repo
+// root) is what keeps /src and /package.json off the live site. The paid
+// build sits at an unguessable subpath — not a guessable filename — so
+// it isn't trivially discoverable from the public demo's origin; buyers
+// still get a real index.html (Add to Home Screen / offline install need
+// that name). The two builds differ only by the DEMO_MODE flag rewrite
+// below; see src/ui/demo-gate.js. See
 // docs/ARCHITECTURE.md §2/§6 ("must eventually be distributable as one
 // self-contained HTML file ... a small, dependency-free Node script").
 //
@@ -33,14 +36,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const SRC = join(ROOT, 'src');
 const ENTRY = join(SRC, 'main.js');
-const OUT_DIR = join(ROOT, 'dist');
+const OUT_DIR = join(ROOT, 'docs'); // GitHub Pages publish folder (only / or /docs are selectable)
 
 // The ONLY thing that differs between the two shipping builds. With
 // `--demo`, the bundled `const DEMO_MODE = false;` line (from
 // src/ui/demo-gate.js) is rewritten to `= true` and the output is the
-// gated public demo at dist/index.html; without it, DEMO_MODE stays
+// gated public demo at docs/index.html; without it, DEMO_MODE stays
 // false and the full/paid build is written to
-// dist/app-x7k2m9/index.html (kept as index.html so buyers' Add to Home
+// docs/app-x7k2m9/index.html (kept as index.html so buyers' Add to Home
 // Screen / offline install works; the unguessable directory keeps it off
 // a predictable public URL). See src/ui/demo-gate.js for what the flag
 // gates. This path string lives only in the build script — it is never
@@ -222,7 +225,7 @@ function build() {
   html = html.replace(scriptTagRe, () => `<script>\n${js}\n    </script>`);
 
   // PWA support is added to the full/paid build ONLY — never the demo, so
-  // `grep`-ing dist/index.html for anything PWA-related (manifest,
+  // `grep`-ing docs/index.html for anything PWA-related (manifest,
   // serviceWorker, apple-mobile-web-app, sw.js) comes back empty. The
   // manifest/service-worker/icons are written as sidecar files next to
   // the paid index.html by build/pwa.js.

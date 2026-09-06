@@ -193,20 +193,22 @@ reflects what's actually in the repo, not a future target.
   main.js              # dev entry point, wires core + modules + shell
 index.html             # dev entry HTML (loads main.js as an ES module)
 /build
-  build.js             # inlines src/* into one self-contained HTML file; `--demo` -> dist/index.html (gated public demo, DEMO_MODE flipped to true), no flag -> dist/app-x7k2m9/index.html (full/paid build). The ONLY difference between the two IN THE HTML is the DEMO_MODE flag rewrite — see src/ui/demo-gate.js. The paid build keeps the index.html filename (buyers' Add to Home Screen / offline install needs it) but sits in an unguessable dir so it isn't at a predictable public URL; that dir name is only in build.js, never bundled into the demo. For the paid build only, build.js also splices the PWA <head> tags + a service-worker registration snippet into the HTML and calls build/pwa.js to write the sidecar files
+  build.js             # inlines src/* into one self-contained HTML file; `--demo` -> docs/index.html (gated public demo, DEMO_MODE flipped to true), no flag -> docs/app-x7k2m9/index.html (full/paid build). The ONLY difference between the two IN THE HTML is the DEMO_MODE flag rewrite — see src/ui/demo-gate.js. Output goes to docs/ because GitHub Pages' "deploy from a branch" only offers / or /docs; publishing /docs (not the repo root) also keeps /src and /package.json off the live site. The paid build keeps the index.html filename (buyers' Add to Home Screen / offline install needs it) but sits in an unguessable subdir so it isn't at a predictable public URL; that dir name is only in build.js, never bundled into the demo. For the paid build only, build.js also splices the PWA <head> tags + a service-worker registration snippet into the HTML and calls build/pwa.js to write the sidecar files
   pwa.js               # PWA sidecars for the paid build ONLY (never the demo): writes manifest.json, sw.js (one versioned cache, filled on install, pruned on activate — cache-first, so the single-file shell opens fully offline), and three icon PNGs (192 / 512 / 180 apple-touch-icon) rasterised at build time from icons.js's `brand` glyph on a solid #1F3D2B field via a tiny self-contained PNG encoder (built-in zlib + inline CRC-32 — no image dependency, no network). Exports pwaHeadTags()/pwaRegisterScript()/writePwaAssets(); nothing here is reachable from a --demo build
   serve.js             # zero-dependency local static server for dev (serves .png / .webmanifest too, for local PWA checks)
-/dist
-  index.html                     # generated — the gated public demo build (npm run build:demo); a single self-contained file, nothing PWA-related
-  app-x7k2m9/index.html          # generated — the full/paid build, no limits (npm run build:full); tracked, so buyers can host it for offline install
+/docs                  # GitHub Pages publish folder (Settings -> Pages -> Deploy from a branch: main /docs). Holds BOTH the project's *.md docs AND the generated build output:
+  ARCHITECTURE.md  DATA-MODEL.md  PRODUCT.md  QA-REPORT.md  ROADMAP.md  SAFE-TO-SPEND.md  TEST-PLAN.md
+  .nojekyll                      # generated — disables Jekyll so the bundle is served as-is
+  index.html                     # generated — the gated public demo build (npm run build:demo), served at Pages `/`; a single self-contained file, nothing PWA-related
+  app-x7k2m9/index.html          # generated — the full/paid build, no limits (npm run build:full), served at Pages `/app-x7k2m9/`; tracked, so buyers can host it for offline install
   app-x7k2m9/manifest.json       # generated — PWA manifest (name/short_name/display standalone/theme+background colour/start_url/192+512 icons)
   app-x7k2m9/sw.js               # generated — service worker (cache `budget-planner-v1`)
   app-x7k2m9/icon-192.png        # generated — maskable app icon
   app-x7k2m9/icon-512.png        # generated — maskable app icon
   app-x7k2m9/apple-touch-icon.png # generated — 180px iOS home-screen icon
+/deliverables          # buyer-facing PDFs (START-HERE, HOW-TO-USE) + their HTML sources — not part of the app
 /tests
   unit/                # node:test files, one per logic module
-docs/
 CLAUDE.md
 README.md
 ```

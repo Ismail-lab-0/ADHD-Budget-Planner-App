@@ -2831,6 +2831,20 @@ into the formula.
   (the 5-row table), §13; `PRODUCT.md` §6 (example → the flow, $384);
   `DATA-MODEL.md` §3a (bill-paid = net zero).
 
+**Build output moved `dist/` → `docs/`.** GitHub Pages' "deploy from a
+branch" setting only offers `/` or `/docs` as the publish folder, so the
+build now writes to `docs/` (`build/build.js`'s `OUT_DIR`): `docs/index.html`
+is the gated demo (served at Pages `/`), `docs/app-x7k2m9/index.html` the
+full/paid build + PWA sidecars (served at `/app-x7k2m9/`). Publishing
+`/docs` — not the repo root — also stops `/src/main.js`, `/package.json`
+etc. being publicly fetchable on the live site. `docs/` now holds both
+the generated artifact and the project's `*.md` docs (they coexist; no
+collision). `.nojekyll` moved to `docs/.nojekyll`. Older entries above
+that mention `dist/index.html` refer to this same artifact at its former
+path. The live site is `https://ismail-lab-0.github.io/adhd-budget-planner/`
+(the repo was renamed from `jebbouriismail0-ship-it/adhd-life-planner`);
+the old `jebbouriismail0-ship-it.github.io` Pages URL is dead.
+
 **Current phase: Phase 9 — Data Backup / Import / Export**, not started.
 See `docs/ROADMAP.md` for full detail; do not jump ahead to later phases
 without the user explicitly moving the project into them.

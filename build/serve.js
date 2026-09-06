@@ -3,7 +3,7 @@
 // docs/ARCHITECTURE.md §8 — the dev index.html loads native ES modules,
 // which some browsers (Chrome) block from file://, so serving over
 // http://localhost avoids that friction. Not required for the built
-// dist/index.html, which is a single self-contained file that works
+// docs/index.html, which is a single self-contained file that works
 // directly from file://.
 
 import { createServer } from 'node:http';
@@ -20,7 +20,7 @@ const CONTENT_TYPES = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
-  // So the paid build's PWA sidecars (dist/app-x7k2m9/) serve with the
+  // So the paid build's PWA sidecars (docs/app-x7k2m9/) serve with the
   // right MIME type when checked locally via `npm start`.
   '.png': 'image/png',
   '.webmanifest': 'application/manifest+json; charset=utf-8',

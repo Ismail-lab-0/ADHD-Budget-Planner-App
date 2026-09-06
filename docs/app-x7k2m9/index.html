@@ -2732,14 +2732,14 @@ function categoryEmojiBadge(category) {
 // ─────────────────────────────────────────────────────────────────────────
 //  DEMO BUILD FLAG — the ONE difference between the two shipping builds
 // ─────────────────────────────────────────────────────────────────────────
-//  DEMO_MODE = true   gated public demo   → dist/index.html   (npm run build:demo)
-//  DEMO_MODE = false  full paid version   → dist/full.html    (npm run build:full)
+//  DEMO_MODE = true   gated public demo   → docs/index.html   (npm run build:demo)
+//  DEMO_MODE = false  full paid build     → its own subdir    (npm run build:full)
 //
 //  The committed source value is `false` (the safe one — no restrictions).
 //  build/build.js rewrites the emitted flag line to true ONLY when
 //  invoked with `--demo`; nothing else about the two bundles differs.
-//  `grep "DEMO_MODE =" dist/index.html dist/full.html` to confirm
-//  true-in-one / false-in-the-other.
+//  (The paid build's output subdirectory name is deliberately kept only
+//  in build/build.js so it never appears in the demo bundle.)
 //
 //  This module is imported first from src/main.js purely so the flag lands
 //  near the top of the built <script>. When DEMO_MODE is false, every

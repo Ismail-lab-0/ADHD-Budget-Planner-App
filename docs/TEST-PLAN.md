@@ -438,16 +438,17 @@ than a generic "click around" pass.
 
 ### Offline checklist
 
-- [ ] Open the built `dist/index.html` directly from disk (`file://`),
+- [ ] Open the built `docs/index.html` directly from disk (`file://`),
       with network access disabled — the app fully works.
 - [ ] No requests appear in the browser's network panel during normal
       use.
 
-### PWA checklist (full/paid build only — `dist/app-x7k2m9/`)
+### PWA checklist (full/paid build only — `docs/app-x7k2m9/`)
 
 Serve the folder over `http://localhost` or HTTPS (a service worker won't
 register from `file://`) — e.g. `npm start` then open
-`/dist/app-x7k2m9/`.
+`/docs/app-x7k2m9/`. On the live GitHub Pages site (Settings → Pages →
+Deploy from a branch: `main` `/docs`) this is `/app-x7k2m9/`.
 
 - [ ] iOS Safari → Share → Add to Home Screen shows the real green
       checkbox icon (the `apple-touch-icon.png`), not a screenshot of the
@@ -460,9 +461,9 @@ register from `file://`) — e.g. `npm start` then open
 - [ ] Chrome/Android → the install prompt appears; installed app matches
       the manifest name/colours; DevTools → Application → Service Workers
       shows `budget-planner-v1` active, and Cache Storage holds the shell.
-- [ ] The **demo** build (`dist/index.html`) has none of this — no
+- [ ] The **demo** build (`docs/index.html`) has none of this — no
       manifest link, no service worker, no `apple-mobile-web-app` meta,
-      and `dist/` has no `manifest.json` / `sw.js` / icon files.
+      and `docs/` has no top-level `manifest.json` / `sw.js` / icon files.
       (`tests/unit/build.test.js` asserts this automatically.)
 
 ### Accessibility checklist (rigorous pass in Phase 11, spot-checked

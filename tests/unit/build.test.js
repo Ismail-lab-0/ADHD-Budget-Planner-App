@@ -40,9 +40,12 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..', '..');
 
+// The build output lives in docs/ — GitHub Pages' "deploy from a branch"
+// only offers / or /docs, and putting it under /docs keeps the repo root
+// (src/, package.json, ...) off the published site.
 const BUILD_JS = join(ROOT, 'build', 'build.js');
-const DEMO_HTML = join(ROOT, 'dist', 'index.html');
-const PAID_DIR = join(ROOT, 'dist', 'app-x7k2m9');
+const DEMO_HTML = join(ROOT, 'docs', 'index.html');
+const PAID_DIR = join(ROOT, 'docs', 'app-x7k2m9');
 const PAID_HTML = join(PAID_DIR, 'index.html');
 
 const buildDemo = () => execFileSync('node', [BUILD_JS, '--demo'], { cwd: ROOT, stdio: 'pipe' });
@@ -58,13 +61,14 @@ describe('build/build.js', () => {
     );
   });
 
-  // The full/paid build is written to an unguessable directory, still as
-  // index.html (buyers' Add to Home Screen / offline install needs that
-  // filename). This path must never leak into the public demo bundle.
-  const PAID_BUILD_FILE = join(ROOT, 'dist', 'app-x7k2m9', 'index.html');
+  // The full/paid build is written to an unguessable subdirectory of
+  // docs/, still as index.html (buyers' Add to Home Screen / offline
+  // install needs that filename). That subdir name must never leak into
+  // the public demo bundle.
+  const PAID_BUILD_FILE = PAID_HTML;
 
-  test('a real dollar amount survives the actual build pipeline intact (full build -> dist/app-x7k2m9/index.html)', () => {
-    execFileSync('node', [join(ROOT, 'build', 'build.js')], { cwd: ROOT, stdio: 'pipe' });
+  test('a real dollar amount survives the actual build pipeline intact (full build -> docs/app-x7k2m9/index.html)', () => {
+    buildFull();
     const html = readFileSync(PAID_BUILD_FILE, 'utf8');
 
     // Extracted and executed, not just string-matched — the bundle is an
@@ -83,20 +87,20 @@ describe('build/build.js', () => {
   // two tests lock that contract in — the exact thing the feature brief
   // asks to be able to `grep` for.
   test('the full build (no flag) writes the paid build with DEMO_MODE = false', () => {
-    execFileSync('node', [join(ROOT, 'build', 'build.js')], { cwd: ROOT, stdio: 'pipe' });
-    const html = readFileSync(PAID_BUILD_FILE, 'utf8');
+    buildFull();
+    const html = readFileSync(PAID_HTML, 'utf8');
     assert.match(html, /const DEMO_MODE = false;/, 'full build must keep DEMO_MODE = false');
     assert.doesNotMatch(html, /const DEMO_MODE = true;/, 'full build must not contain DEMO_MODE = true');
   });
 
-  test('the --demo build writes dist/index.html with DEMO_MODE = true and still builds cleanly', () => {
-    execFileSync('node', [join(ROOT, 'build', 'build.js'), '--demo'], { cwd: ROOT, stdio: 'pipe' });
-    const html = readFileSync(join(ROOT, 'dist', 'index.html'), 'utf8');
+  test('the --demo build writes docs/index.html with DEMO_MODE = true and still builds cleanly', () => {
+    buildDemo();
+    const html = readFileSync(DEMO_HTML, 'utf8');
     assert.match(html, /const DEMO_MODE = true;/, '--demo build must flip DEMO_MODE to true');
     assert.doesNotMatch(html, /const DEMO_MODE = false;/, '--demo build must not leave a DEMO_MODE = false line');
     // The flag flip must not have corrupted the bundle.
     const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
-    assert.ok(scriptMatch, 'bundled <script> tag not found in dist/index.html');
+    assert.ok(scriptMatch, 'bundled <script> tag not found in docs/index.html');
     const bundleBody = scriptMatch[1].replace(/^\s*\(function \(\) \{\s*"use strict";/, '').replace(/\}\)\(\);\s*$/, '');
     const formatCents = new Function(`${bundleBody}\nreturn formatCents;`)();
     assert.equal(formatCents(150000), '$1,500.00');
@@ -106,8 +110,8 @@ describe('build/build.js', () => {
   });
 
   test('the public demo bundle contains no reference to the paid build path', () => {
-    execFileSync('node', [join(ROOT, 'build', 'build.js'), '--demo'], { cwd: ROOT, stdio: 'pipe' });
-    const html = readFileSync(join(ROOT, 'dist', 'index.html'), 'utf8');
+    buildDemo();
+    const html = readFileSync(DEMO_HTML, 'utf8');
     assert.doesNotMatch(html, /app-x7k2m9/, 'the unguessable paid-build path must never appear in the public demo');
   });
 });
@@ -128,7 +132,7 @@ describe('PWA (full/paid build only — build/pwa.js)', () => {
   test('the paid build emits manifest.json, sw.js and three icon PNGs beside index.html', () => {
     buildFull();
     for (const name of ['manifest.json', 'sw.js', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) {
-      assert.ok(existsSync(join(PAID_DIR, name)), `dist/app-x7k2m9/${name} should exist`);
+      assert.ok(existsSync(join(PAID_DIR, name)), `docs/app-x7k2m9/${name} should exist`);
     }
     assert.deepEqual(pngSize(join(PAID_DIR, 'icon-192.png')), { width: 192, height: 192 });
     assert.deepEqual(pngSize(join(PAID_DIR, 'icon-512.png')), { width: 512, height: 512 });
@@ -187,12 +191,12 @@ describe('PWA (full/paid build only — build/pwa.js)', () => {
       assert.doesNotMatch(html, marker, `demo build must not contain ${marker}`);
     }
     for (const name of ['manifest.json', 'sw.js', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) {
-      assert.ok(!existsSync(join(ROOT, 'dist', name)), `dist/${name} must not be generated for the demo`);
+      assert.ok(!existsSync(join(ROOT, 'docs', name)), `docs/${name} must not be generated for the demo`);
     }
   });
 
-  // Leave dist/ in the canonical state the repo tracks: demo at
-  // dist/index.html, paid + PWA sidecars under dist/app-x7k2m9/.
+  // Leave docs/ in the canonical state the repo tracks: demo at
+  // docs/index.html, paid + PWA sidecars under docs/app-x7k2m9/.
   test('(cleanup) rebuild both', () => {
     buildDemo();
     buildFull();

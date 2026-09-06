@@ -14,7 +14,7 @@ document is the narrative account of what was actually done.
 at the start of this pass was 277/316 — the 39 added here are the three new
 `qa-*.test.js` files plus regression tests folded into two existing files.)
 
-`npm run build` succeeds (`dist/index.html`, single self-contained file);
+`npm run build` succeeds (`docs/index.html`, single self-contained file);
 the bundled script was additionally extracted and executed directly under
 Node (`node -e "require(...)"`) to catch anything a syntax check alone
 would miss — it ran cleanly with no errors.

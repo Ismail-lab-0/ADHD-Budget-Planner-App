@@ -80,7 +80,7 @@ a reload, and builds to a working single HTML file. **Met.**
   (`src/main.js`), debounced persistence, flush on page hide/unload.
 - Error handling: calm fallback on startup failure; in-memory-only
   degradation if `localStorage` is unavailable.
-- Build script: inlines `/src` into one `dist/index.html`
+- Build script: inlines `/src` into one `docs/index.html`
   (`build/build.js`), plus a zero-dependency local dev server
   (`build/serve.js`).
 
@@ -359,7 +359,7 @@ confidently.
 - `build/build.js` already exists and works (Phase 1) — verify it against
   the full budget module set, harden as needed (feature #16).
 
-Exit criteria: `dist/index.html` is the real, shippable product artifact.
+Exit criteria: `docs/index.html` is the real, shippable product artifact.
 
 ## Phase 11 — Accessibility & hardening pass
 

@@ -110,25 +110,33 @@ There are two builds from the same code, differing only by the
 
 | command            | output                        | `DEMO_MODE` | behaviour                                          |
 | ------------------ | ----------------------------- | ----------- | ------------------------------------------------- |
-| `npm run build:demo` | `dist/index.html`           | `true`      | gated public demo — expense creation capped at 25 |
-| `npm run build:full` | `dist/app-x7k2m9/index.html` | `false`     | full/paid version — no limit, no demo UI at all   |
+| `npm run build:demo` | `docs/index.html`           | `true`      | gated public demo — expense creation capped at 25 |
+| `npm run build:full` | `docs/app-x7k2m9/index.html` | `false`     | full/paid version — no limit, no demo UI at all   |
 
 `npm run build` runs both.
-`grep "DEMO_MODE =" dist/index.html dist/app-x7k2m9/index.html` confirms
+`grep "DEMO_MODE =" docs/index.html docs/app-x7k2m9/index.html` confirms
 the flag is `true` in one and `false` in the other.
 
+Output goes to **`docs/`** (not `dist/`) because GitHub Pages'
+"deploy from a branch" setting only offers `/` or `/docs` as the publish
+folder. Publishing `/docs` — and not the repo root — is also what keeps
+`/src`, `/package.json` etc. off the live site. Pages then serves
+`docs/index.html` at `/` (the demo) and `docs/app-x7k2m9/index.html` at
+`/app-x7k2m9/` (the paid build). `docs/` also holds the project's
+`*.md` docs; they coexist with the build output.
+
 The paid build keeps the `index.html` filename (buyers need it for Add to
-Home Screen / offline install) but sits in an unguessable directory so it
-isn't served at a predictable public URL. That directory name lives only
-in `build/build.js` — it is never bundled into the demo, which has no
-link or reference to it.
+Home Screen / offline install) but sits in an unguessable subdirectory so
+it isn't served at a predictable public URL. That directory name lives
+only in `build/build.js` — it is never bundled into the demo, which has
+no link or reference to it.
 
 The paid build is also a **PWA**: alongside its `index.html`,
 `npm run build:full` writes `manifest.json`, a `sw.js` service worker
 (one versioned cache, cache-first, so the app opens with no network after
 one visit), and three app icons (192 / 512 / 180px apple-touch-icon,
 generated at build time from the app's own logo mark). The demo build
-gets none of this. Serve `dist/app-x7k2m9/` over `http(s)` (not
+gets none of this. Serve `docs/app-x7k2m9/` over `http(s)` (not
 `file://`) to test the service worker — `docs/TEST-PLAN.md` has the PWA
 checklist.
 
